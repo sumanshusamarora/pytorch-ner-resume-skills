@@ -237,7 +237,7 @@ class EntityExtraction(nn.Module):
 
 
 class ClassificationModelUtils:
-    def __init__(self, dataloader_train, dataloader_test, ner_class_weights, cuda=True, dropout=0.3, rnn_stack_size=2, learning_rate=0.001):
+    def __init__(self, dataloader_train, dataloader_test, ner_class_weights, num_classes, cuda=True, dropout=0.3, rnn_stack_size=2, learning_rate=0.001):
         if cuda:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             torch.cuda.empty_cache()
@@ -253,6 +253,7 @@ class ClassificationModelUtils:
         self.dataloader_test = dataloader_test
 
         self.ner_class_weights = ner_class_weights
+        self.num_classes = num_classes
 
         self.criterion_crossentropy = nn.CrossEntropyLoss(weight=torch.FloatTensor(self.ner_class_weights).to(device))
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
@@ -272,7 +273,7 @@ class ClassificationModelUtils:
         self.test_epoch_ner_f1s = []
 
         # CRF
-        self.crf_model = CRF(13).to(device)
+        self.crf_model = CRF(self.num_classes+1).to(device)
 
     def evaluate_classification_metrics(self, truth, prediction, type='ner'):
         if type == 'ner':
@@ -445,17 +446,23 @@ class ClassificationModelUtils:
 
 
 if __name__ == "__main__":
-    EPOCHS = 30
+    EPOCHS = 15
     DROPOUT = 0.5
-    RNN_STACK_SIZE = 2
+    RNN_STACK_SIZE = 1
     LEARNING_RATE = 0.0001
+    TEST_SPLIT = 0.3
     mlflow.set_experiment("PytorchDualLoss")
     with mlflow.start_run() as run:
-        mlflow.log_param("Type", "WORD-CHAR-POS-CNN-RNN-CRF-NER-CROSSENTROPY-LOSS")
+        mlflow.set_tags({"Framework":"Pytorch",
+                         "Embeddings":"Word-Char-pos",
+                         "Outputs": "NER Only",
+                         "Loss": "CRF",
+                         })
         mlflow.log_param("EPOCHS", EPOCHS)
         mlflow.log_param("DROPOUT", DROPOUT)
         mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)
         mlflow.log_param("LEARNING_RATE", LEARNING_RATE)
+        mlflow.log_param("TEST_SPLIT", TEST_SPLIT)
         # Load Data
         X_text_list, y_ner_list = load_data('data/dataset_ready.pkl')
 
@@ -464,7 +471,7 @@ if __name__ == "__main__":
 
         # Split data in test and train plus return segregate as input lists
         X_text_list_train, X_text_list_test, X_tags_train, X_tags_test, \
-        y_ner_list_train, y_ner_list_test = split_test_train(X_text_list, X_tags, y_ner_list, split_size=0.3)
+        y_ner_list_train, y_ner_list_test = split_test_train(X_text_list, X_tags, y_ner_list, split_size=TEST_SPLIT)
 
         # Set some important parameters values
         MAX_SENTENCE_LEN = max([len(sentence) for sentence in X_text_list_train])
@@ -509,16 +516,27 @@ if __name__ == "__main__":
                                  } for i in range(x_padded_test.shape[0])])
 
         dataloader_test = DataLoader(dataset=dataset_test, batch_size=512, shuffle=False)
-
-        #Build model
+        """
+        models = mlflow.pytorch.load_model(
+            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/39317e41864845f69ef9aae046baa420/artifacts/models')
+        models = models.to('cpu')
+        for i, data in enumerate(dataloader_test):
+            if i > 1:
+                out = models(data['x_padded'], data['x_char_padded'], data['x_postag_padded'])
+                break
+        """
+        # Build model
         GPU = True
         mlflow.log_param("CUDA", GPU)
 
         ner_class_weights = calculate_sample_weights(y_ner_padded_train)
 
-        model_utils = ClassificationModelUtils(dataloader_train, dataloader_test, ner_class_weights, cuda=GPU, rnn_stack_size=RNN_STACK_SIZE)
+        model_utils = ClassificationModelUtils(dataloader_train, dataloader_test, ner_class_weights, num_classes=NUM_CLASSES, cuda=GPU, rnn_stack_size=RNN_STACK_SIZE)
         model_utils.train(EPOCHS)
-        mlflow.pytorch.log_model(model_utils.model, 'models')
+
+        mlflow.pytorch.log_model(model_utils.model, 'ner_model')
+        mlflow.pytorch.log_model(model_utils.crf_model, 'crf_model')
+
 
         mlflow.log_metric("Loss-Test", model_utils.test_epoch_loss[-1])
         mlflow.log_metric("Loss-Train", model_utils.epoch_losses[-1])

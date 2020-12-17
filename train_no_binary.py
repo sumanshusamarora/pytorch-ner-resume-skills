@@ -239,14 +239,16 @@ class EntityExtraction(nn.Module):
 
 
 class ClassificationModelUtils:
-    def __init__(self, dataloader_train, dataloader_test, ner_class_weights, cuda=True, dropout=0.3):
+    def __init__(self, dataloader_train, dataloader_test, ner_class_weights, cuda=True, dropout=0.3, rnn_stack_size=2, learning_rate=0.001):
         if cuda:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             torch.cuda.empty_cache()
         else:
             self.device = torch.device('cpu')
 
-        self.model = EntityExtraction(num_classes=NUM_CLASSES, dropout_ratio=dropout)
+        self.learning_rate = learning_rate
+
+        self.model = EntityExtraction(num_classes=NUM_CLASSES, dropout_ratio=dropout, rnn_stack_size=rnn_stack_size)
         self.model = self.model.to(self.device)
 
         self.dataloader_train = dataloader_train
@@ -255,7 +257,7 @@ class ClassificationModelUtils:
         self.ner_class_weights = ner_class_weights
 
         self.criterion_crossentropy = nn.CrossEntropyLoss(weight=torch.FloatTensor(self.ner_class_weights).to(device))
-        self.optimizer = torch.optim.Adam(self.model.parameters())
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
         # Train metric result holders
         self.epoch_losses = []
@@ -440,13 +442,17 @@ class ClassificationModelUtils:
 
 
 if __name__ == "__main__":
-    EPOCHS = 10
-    DROPOUT = 0.4
+    EPOCHS = 15
+    DROPOUT = 0.5
+    RNN_STACK_SIZE = 1
+    LEARNING_RATE = 0.0001
     mlflow.set_experiment("PytorchDualLoss")
     with mlflow.start_run() as run:
         mlflow.log_param("Type", "WORD-CHAR-POS-CNN-RNN-BIN-NER-TEACHER-FORCING-CROSSENTROPY-LOSS")
         mlflow.log_param("EPOCHS", EPOCHS)
         mlflow.log_param("DROPOUT", DROPOUT)
+        mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)
+        mlflow.log_param("LEARNING_RATE", LEARNING_RATE)
         # Load Data
         X_text_list, y_ner_list = load_data('data/dataset_ready.pkl')
 
@@ -507,7 +513,7 @@ if __name__ == "__main__":
 
         ner_class_weights = calculate_sample_weights(y_ner_padded_train)
 
-        model_utils = ClassificationModelUtils(dataloader_train, dataloader_test, ner_class_weights, cuda=GPU)
+        model_utils = ClassificationModelUtils(dataloader_train, dataloader_test, ner_class_weights, cuda=GPU, rnn_stack_size=RNN_STACK_SIZE)
         model_utils.train(EPOCHS)
         mlflow.pytorch.log_model(model_utils.model, 'models')
 

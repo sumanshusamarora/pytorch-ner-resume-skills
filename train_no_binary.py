@@ -373,10 +373,10 @@ class ClassificationModelUtils:
         self.test_epoch_ner_f1s.append(test_ner_f1)
 
         print(f"-->Validation Loss - {self.test_epoch_loss[-1]:.4f}, "
-              f"Validation Accuracy - {self.test_epoch_ner_accuracy[-1]} "
-              f"Validation Precision - {self.test_epoch_ner_precision[-1]}, "
-              f"Validation Recall - {self.test_epoch_ner_recall[-1]} "+
-              f"Validation F1 - {self.test_epoch_ner_f1s[-1]}")
+              f"Validation Accuracy - {self.test_epoch_ner_accuracy[-1]:.2f} "
+              f"Validation Precision - {self.test_epoch_ner_precision[-1]:.2f}, "
+              f"Validation Recall - {self.test_epoch_ner_recall[-1]:.2f} "+
+              f"Validation F1 - {self.test_epoch_ner_f1s[-1]:.2f}")
 
     def train(self, num_epochs=10):
         index_metric_append = int(len(dataloader_train) / 4)

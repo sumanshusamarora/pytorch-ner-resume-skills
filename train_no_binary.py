@@ -140,7 +140,7 @@ def encode_ner_y(y_ner_list_train, y_ner_list_test, CLASS_COUNT_DICT):
                                                                       y_ner_padded_test.shape[1])), dim=1).type(
             torch.long)
 
-    return y_ner_padded_train, y_ner_padded_test
+    return y_ner_encoder, y_ner_padded_train, y_ner_padded_test
 
 #Sample weights
 def calculate_sample_weights(y_ner_padded_train):
@@ -344,7 +344,9 @@ class ClassificationModelUtils:
 
                 # Loss
                 #test_loss = self.criterion_crossentropy(test_ner_out.transpose(2, 1), data_test['y_ner_padded'])
-                test_loss = -1 * self.crf_model(test_ner_out.permute(1, 0, 2), data_test['y_ner_padded'].permute(1, 0))
+                mask = torch.where(data_test['x_padded'] > 0, torch.Tensor([1]).type(torch.uint8).to(device),
+                                   torch.Tensor([0]).type(torch.uint8).to(device)).permute(1, 0)
+                test_loss = -1 * self.crf_model(test_ner_out.permute(1, 0, 2), data_test['y_ner_padded'].permute(1, 0), mask=mask)
                 test_losses.append(test_loss.item())
 
                 # Evaluation Metrics
@@ -401,9 +403,11 @@ class ClassificationModelUtils:
                                      data['x_char_padded'],
                                      data['x_postag_padded'])
 
+                mask = torch.where(data['x_padded']>0,torch.Tensor([1]).type(torch.uint8).to(device),torch.Tensor([0]).type(torch.uint8).to(device)).permute(1,0)
+
                 # Loss
                 #loss = self.criterion_crossentropy(ner_out.transpose(2, 1), data['y_ner_padded'])
-                loss = -1*self.crf_model(ner_out.permute(1,0,2), data['y_ner_padded'].permute(1,0))
+                loss = -1*self.crf_model(ner_out.permute(1,0,2), data['y_ner_padded'].permute(1,0), mask=mask)
                 batch_losses.append(loss.item())
 
                 # Evaluation Metrics
@@ -446,7 +450,7 @@ class ClassificationModelUtils:
 
 
 if __name__ == "__main__":
-    EPOCHS = 15
+    EPOCHS = 12
     DROPOUT = 0.5
     RNN_STACK_SIZE = 1
     LEARNING_RATE = 0.0001
@@ -456,7 +460,7 @@ if __name__ == "__main__":
         mlflow.set_tags({"Framework":"Pytorch",
                          "Embeddings":"Word-Char-pos",
                          "Outputs": "NER Only",
-                         "Loss": "CRF",
+                         "Loss": "CRF with mask",
                          })
         mlflow.log_param("EPOCHS", EPOCHS)
         mlflow.log_param("DROPOUT", DROPOUT)
@@ -496,7 +500,7 @@ if __name__ == "__main__":
         x_postag_encoder, x_postag_padded_train, x_postag_padded_test = tokenize_pos_tags(X_tags_train, X_tags_test)
 
         # Encode y NER
-        y_ner_padded_train, y_ner_padded_test = encode_ner_y(y_ner_list_train, y_ner_list_test, CLASS_COUNT_DICT)
+        y_ner_encoder, y_ner_padded_train, y_ner_padded_test = encode_ner_y(y_ner_list_train, y_ner_list_test, CLASS_COUNT_DICT)
 
         #Create train dataloader
         dataset_train = Dataset([{'x_padded': x_padded_train[i],
@@ -518,12 +522,20 @@ if __name__ == "__main__":
         dataloader_test = DataLoader(dataset=dataset_test, batch_size=512, shuffle=False)
         """
         models = mlflow.pytorch.load_model(
-            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/39317e41864845f69ef9aae046baa420/artifacts/models')
-        models = models.to('cpu')
+            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/27da0bae890f4a9d8a895b05d5718ee7/artifacts/ner_model')
+        k = 8
         for i, data in enumerate(dataloader_test):
             if i > 1:
-                out = models(data['x_padded'], data['x_char_padded'], data['x_postag_padded'])
+                out = models(data['x_padded'][k:k+1].to(device), data['x_char_padded'][k:k+1].to(device), data['x_postag_padded'][k:k+1].to(device))
                 break
+        
+        crf_models = mlflow.pytorch.load_model(
+            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/27da0bae890f4a9d8a895b05d5718ee7/artifacts/crf_model')
+            crf_out = crf_models.decode(out)
+            
+            result = [word[0] for word in crf_out]
+            truth = [word.item() for word in data['y_ner_padded'][k]]
+            
         """
         # Build model
         GPU = True

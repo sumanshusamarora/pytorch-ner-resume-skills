@@ -10,12 +10,10 @@ from sklearn.utils.class_weight import compute_class_weight
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchtext
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
-from torchnlp.samplers import DistributedBatchSampler, BalancedSampler
+from torchcrf import CRF
 from torchnlp.datasets.dataset import Dataset
-import torchnlp
 from torchnlp.encoders import LabelEncoder
 from torchnlp.encoders.text import StaticTokenizerEncoder, CharacterEncoder
 import nltk
@@ -273,6 +271,9 @@ class ClassificationModelUtils:
         self.test_epoch_ner_precision = []
         self.test_epoch_ner_f1s = []
 
+        # CRF
+        self.crf_model = CRF(13).to(device)
+
     def evaluate_classification_metrics(self, truth, prediction, type='ner'):
         if type == 'ner':
             average = 'macro'
@@ -341,7 +342,8 @@ class ClassificationModelUtils:
                                                            data_test['x_postag_padded'])
 
                 # Loss
-                test_loss = self.criterion_crossentropy(test_ner_out.transpose(2, 1), data_test['y_ner_padded'])
+                #test_loss = self.criterion_crossentropy(test_ner_out.transpose(2, 1), data_test['y_ner_padded'])
+                test_loss = -1 * self.crf_model(test_ner_out.permute(1, 0, 2), data_test['y_ner_padded'].permute(1, 0))
                 test_losses.append(test_loss.item())
 
                 # Evaluation Metrics
@@ -399,7 +401,8 @@ class ClassificationModelUtils:
                                      data['x_postag_padded'])
 
                 # Loss
-                loss = self.criterion_crossentropy(ner_out.transpose(2, 1), data['y_ner_padded'])
+                #loss = self.criterion_crossentropy(ner_out.transpose(2, 1), data['y_ner_padded'])
+                loss = -1*self.crf_model(ner_out.permute(1,0,2), data['y_ner_padded'].permute(1,0))
                 batch_losses.append(loss.item())
 
                 # Evaluation Metrics
@@ -442,13 +445,13 @@ class ClassificationModelUtils:
 
 
 if __name__ == "__main__":
-    EPOCHS = 15
+    EPOCHS = 30
     DROPOUT = 0.5
-    RNN_STACK_SIZE = 1
+    RNN_STACK_SIZE = 2
     LEARNING_RATE = 0.0001
     mlflow.set_experiment("PytorchDualLoss")
     with mlflow.start_run() as run:
-        mlflow.log_param("Type", "WORD-CHAR-POS-CNN-RNN-BIN-NER-TEACHER-FORCING-CROSSENTROPY-LOSS")
+        mlflow.log_param("Type", "WORD-CHAR-POS-CNN-RNN-CRF-NER-CROSSENTROPY-LOSS")
         mlflow.log_param("EPOCHS", EPOCHS)
         mlflow.log_param("DROPOUT", DROPOUT)
         mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)

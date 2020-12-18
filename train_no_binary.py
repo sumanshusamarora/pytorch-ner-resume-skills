@@ -156,7 +156,7 @@ class EntityExtraction(nn.Module):
 
     def __init__(self, num_classes, rnn_hidden_size=512, rnn_stack_size=2, rnn_bidirectional=True, word_embed_dim=256,
                  tag_embed_dim=256, char_embed_dim=124, rnn_embed_dim=512,
-                 char_embedding=True, dropout_ratio=0.3):
+                 char_embedding=True, dropout_ratio=0.3, class_weights=None):
         super().__init__()
         # self variables
         self.NUM_CLASSES = num_classes
@@ -168,6 +168,7 @@ class EntityExtraction(nn.Module):
         self.rnn_hidden_size = rnn_hidden_size
         self.rnn_stack_size = rnn_stack_size
         self.rnn_bidirectional = rnn_bidirectional
+        self.class_weights = torch.FloatTensor(class_weights).to(device)
 
         # Embedding Layers
         self.word_embed = nn.Embedding(num_embeddings=x_encoder.vocab_size,
@@ -178,16 +179,16 @@ class EntityExtraction(nn.Module):
         #                               embedding_dim=self.char_embed_dim)
         #self.char_embed_drop = nn.Dropout(self.dropout_ratio)
 
-        #self.postag_embed = nn.Embedding(num_embeddings=x_postag_encoder.vocab_size,
-        #                                 embedding_dim=self.tag_embed_dim)
-        #self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
+        self.postag_embed = nn.Embedding(num_embeddings=x_postag_encoder.vocab_size,
+                                         embedding_dim=self.tag_embed_dim)
+        self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
 
         # CNN for character input
         #self.conv_char = nn.Conv1d(in_channels=self.char_embed_dim, out_channels=52, kernel_size=3, padding=1)
         # self.maxpool_char = nn.MaxPool1d(kernel_size=3)
 
         # LSTM for concatenated input
-        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim,
+        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim+self.tag_embed_dim,
                                 hidden_size=self.rnn_hidden_size,
                                 num_layers=self.rnn_stack_size,
                                 batch_first=True,
@@ -203,7 +204,7 @@ class EntityExtraction(nn.Module):
         self.linear_ner = nn.Linear(in_features=128, out_features=self.NUM_CLASSES + 1)  # +1 for padding 0
         self.crf = CRF(self.NUM_CLASSES+1, batch_first=True)
 
-    def forward(self, x_word, mask, y_word=None, train=True):
+    def forward(self, x_word, x_pos, mask, y_word=None, train=True):
         #x_char_shape = x_char.shape
         #batch_size = x_char_shape[0]
 
@@ -213,8 +214,8 @@ class EntityExtraction(nn.Module):
         #char_out = self.char_embed(x_char)
         #char_out = self.char_embed_drop(char_out)
 
-        #tag_out = self.postag_embed(x_pos)
-        #tag_out = self.tag_embed_drop(tag_out)
+        tag_out = self.postag_embed(x_pos)
+        tag_out = self.tag_embed_drop(tag_out)
 
         #char_out_shape = char_out.shape
         #char_out = char_out.view(char_out_shape[0], char_out_shape[1] * char_out_shape[2], char_out_shape[3])
@@ -222,10 +223,10 @@ class EntityExtraction(nn.Module):
         #char_out = char_out.view(char_out_shape[0], char_out_shape[1], -1)
 
         #concat = torch.cat((word_out, char_out, tag_out), dim=2)
-        #concat = F.relu(concat)
+        concat = torch.cat((word_out, tag_out), dim=2)
 
         # NER LSTM
-        ner_lstm_out, _ = self.lstm_ner(word_out)
+        ner_lstm_out, _ = self.lstm_ner(concat)
         ner_lstm_out = self.lstm_ner_drop(ner_lstm_out)
 
         # Linear
@@ -234,7 +235,12 @@ class EntityExtraction(nn.Module):
 
         # Final Linear
         ner_out = self.linear_ner(ner_out)
+
+        #if self.class_weights is not None:
+        #    ner_out = ner_out * self.class_weights
+
         crf_out_decoded = self.crf.decode(ner_out)
+
         if train:
             crf_out = -1*self.crf(emissions=ner_out, tags=y_word, mask=mask, reduction="token_mean")
         else:
@@ -253,15 +259,15 @@ class ClassificationModelUtils:
 
         self.learning_rate = learning_rate
 
-        self.model = EntityExtraction(num_classes=NUM_CLASSES, dropout_ratio=dropout, rnn_stack_size=rnn_stack_size, word_embed_dim=word_embed_dim)
-        self.model = self.model.to(self.device)
-
         self.dataloader_train = dataloader_train
         self.dataloader_test = dataloader_test
 
         self.ner_class_weights = ner_class_weights
         self.num_classes = num_classes
 
+        self.model = EntityExtraction(num_classes=NUM_CLASSES, dropout_ratio=dropout, rnn_stack_size=rnn_stack_size,
+                                      word_embed_dim=word_embed_dim, class_weights=self.ner_class_weights)
+        self.model = self.model.to(self.device)
         self.criterion_crossentropy = nn.CrossEntropyLoss(weight=torch.FloatTensor(self.ner_class_weights).to(device))
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
@@ -343,13 +349,13 @@ class ClassificationModelUtils:
 
                 data_test['x_padded'] = data_test['x_padded'].to(self.device)
                 #data_test['x_char_padded'] = data_test['x_char_padded'].to(self.device)
-                #data_test['x_postag_padded'] = data_test['x_postag_padded'].to(self.device)
+                data_test['x_postag_padded'] = data_test['x_postag_padded'].to(self.device)
                 data_test['y_ner_padded'] = data_test['y_ner_padded'].to(self.device)
 
                 mask = torch.where(data_test['x_padded'] > 0, torch.Tensor([1]).type(torch.uint8).to(device),
                                    torch.Tensor([0]).type(torch.uint8).to(device))
 
-                test_ner_out, test_crf_out, test_loss = self.model(data_test['x_padded'], mask, data_test['y_ner_padded']) #, data_test['x_char_padded'],
+                test_ner_out, test_crf_out, test_loss = self.model(data_test['x_padded'], data_test['x_postag_padded'], mask, data_test['y_ner_padded']) #, data_test['x_char_padded'],
                                                            #data_test['x_postag_padded'])
 
                 # Loss
@@ -404,13 +410,13 @@ class ClassificationModelUtils:
                 self.crf_weights.append(self.model.crf.state_dict()['transitions'].to('cpu').numpy())
                 data['x_padded'] = data['x_padded'].to(self.device)
                 #data['x_char_padded'] = data['x_char_padded'].to(self.device)
-                #data['x_postag_padded'] = data['x_postag_padded'].to(self.device)
+                data['x_postag_padded'] = data['x_postag_padded'].to(self.device)
                 data['y_ner_padded'] = data['y_ner_padded'].to(self.device)
 
                 mask = torch.where(data['x_padded'] > 0, torch.Tensor([1]).type(torch.uint8).to(device),
                                    torch.Tensor([0]).type(torch.uint8).to(device))
 
-                ner_out, crf_out, loss = self.model(data['x_padded'], mask, data['y_ner_padded'])
+                ner_out, crf_out, loss = self.model(data['x_padded'], data['x_postag_padded'], mask, data['y_ner_padded'])
                                      #data['x_char_padded'],
                                      #data['x_postag_padded'])
 
@@ -461,28 +467,30 @@ class ClassificationModelUtils:
 
 
 if __name__ == "__main__":
-    EPOCHS = 15
+    EPOCHS = 12
     DROPOUT = 0.5
-    RNN_STACK_SIZE = 2
-    LEARNING_RATE = 0.0001
-    TEST_SPLIT = 0.33
-    WORD_EMBED_DIM = 512
+    RNN_STACK_SIZE = 2 #Finalized
+    LEARNING_RATE = 0.0001 #Finalized
+    TEST_SPLIT = 0.3 #Finalized
+    WORD_EMBED_DIM = 512 #Finalized
+    POSTAG_EMBED_DIM = 256
     GPU = True
     mlflow.set_experiment("PytorchDualLoss")
     with mlflow.start_run() as run:
         mlflow.set_tags({"Framework":"Pytorch",
-                         "Embeddings":"Word",
+                         "Embeddings":"Word-POSTAG",
                          "Outputs": "NER Only",
                          "Loss": "CRF with mask",
                          })
-        
-        mlflow.log_param("COMMENT", "Hacked truth 0 to 9 to show correct evaluation")
+        mlflow.log_param("CUDA", GPU)
+        mlflow.log_param("COMMENT", "Added log softmax before CRF, no sample weight")
         mlflow.log_param("EPOCHS", EPOCHS)
         mlflow.log_param("DROPOUT", DROPOUT)
         mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)
         mlflow.log_param("LEARNING_RATE", LEARNING_RATE)
         mlflow.log_param("TEST_SPLIT", TEST_SPLIT)
         mlflow.log_param("WORD_EMBED_DIM", WORD_EMBED_DIM)
+        mlflow.log_param("POSTAG_EMBED_DIM", POSTAG_EMBED_DIM)
         # Load Data
         X_text_list, y_ner_list = load_data('data/dataset_ready.pkl')
 
@@ -513,7 +521,7 @@ if __name__ == "__main__":
         #x_char_encoder, x_char_padded_train, x_char_padded_test = tokenize_character(X_text_list_train, x_padded_train, x_padded_test, x_encoder)
 
         # Tokenize Pos tags
-        #x_postag_encoder, x_postag_padded_train, x_postag_padded_test = tokenize_pos_tags(X_tags_train, X_tags_test)
+        x_postag_encoder, x_postag_padded_train, x_postag_padded_test = tokenize_pos_tags(X_tags_train, X_tags_test)
 
 
         # Encode y NER
@@ -522,7 +530,7 @@ if __name__ == "__main__":
         #Create train dataloader
         dataset_train = Dataset([{'x_padded': x_padded_train[i],
                                   #'x_char_padded': x_char_padded_train[i],
-                                  #'x_postag_padded': x_postag_padded_train[i],
+                                  'x_postag_padded': x_postag_padded_train[i],
                                   'y_ner_padded': y_ner_padded_train[i],
                                   } for i in range(x_padded_train.shape[0])])
 
@@ -532,28 +540,27 @@ if __name__ == "__main__":
         # Create test dataloader
         dataset_test = Dataset([{'x_padded': x_padded_test[i],
                                  #'x_char_padded': x_char_padded_test[i],
-                                 #'x_postag_padded': x_postag_padded_test[i],
+                                 'x_postag_padded': x_postag_padded_test[i],
                                  'y_ner_padded': y_ner_padded_test[i],
                                  } for i in range(x_padded_test.shape[0])])
 
         dataloader_test = DataLoader(dataset=dataset_test, batch_size=512, shuffle=False)
         """
         models = mlflow.pytorch.load_model(
-            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/8c06df79f5634eeab7b4dc00b6bbc790/artifacts/ner_model')
-            
-        crf_models = mlflow.pytorch.load_model(
-            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/8c06df79f5634eeab7b4dc00b6bbc790/artifacts/crf_model')
-        
-        for i, data in enumerate(dataloader_test):
-            break 
+            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/c8c25fed508a486fb0c81e05ce32ae91/artifacts/ner_model')
+
+        for i, data in enumerate(dataloader_train):
+            break
             
         k_list = [i for i, tens in enumerate(data['y_ner_padded']) if torch.unique(tens).shape[0]>2]
-        k = k_list[2]
-        out = models(data['x_padded'][k:k+1].to(device))
-
-        crf_out = crf_models.decode(out)
+        k = k_list[33]
+        mask = torch.where(data['x_padded'][k:k+1] > 0, torch.Tensor([1]).type(torch.uint8),
+                                   torch.Tensor([0]).type(torch.uint8)).to(device)
+                                
         
-        result = [word[0] for word in crf_out]
+        out, decoded, crf_loss = models(data['x_padded'][k:k+1].to(device), data['x_postag_padded'][k:k+1].to(device), mask, data['y_ner_padded'][k:k+1].to(device), train=False)
+        
+        result = [word for word in decoded[0]]
         truth = [word.item() for word in data['y_ner_padded'][k]]
             
         """

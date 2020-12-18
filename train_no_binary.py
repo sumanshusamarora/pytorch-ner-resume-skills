@@ -124,21 +124,6 @@ def tokenize_pos_tags(X_tags_train, X_tags_test):
     return x_postag_encoder, x_postag_padded_train, x_postag_padded_test
 
 
-class create_tags_and_one_hot_encode:
-    def __init__(self, train):
-        self.train = train
-        self.cats = torch.max(torch.flatten(x_postag_padded_train)).item()+1 # +1 for unknown
-
-    def transform(self, test):
-        test_tensor = torch.zeros((test.shape[0], test.shape[1], self.cats))
-        for i in test:
-            for k in test:
-                try:
-                    test_tensor[i][k][test[i][k].item()] = 1
-                except:
-                    pass
-        return test_tensor
-
 def encode_ner_y(y_ner_list_train, y_ner_list_test, CLASS_COUNT_DICT):
     y_ner_encoder = LabelEncoder(sample=CLASS_COUNT_DICT.keys())
     y_ner_encoded_train = [[y_ner_encoder.encode(label) for label in label_list] for label_list in y_ner_list_train]
@@ -216,8 +201,9 @@ class EntityExtraction(nn.Module):
         self.linear1 = nn.Linear(in_features=self.linear_in_size, out_features=128)
         self.linear_drop = nn.Dropout(self.dropout_ratio)
         self.linear_ner = nn.Linear(in_features=128, out_features=self.NUM_CLASSES + 1)  # +1 for padding 0
+        self.crf = CRF(self.NUM_CLASSES+1, batch_first=True)
 
-    def forward(self, x_word):
+    def forward(self, x_word, mask, y_word=None, train=True):
         #x_char_shape = x_char.shape
         #batch_size = x_char_shape[0]
 
@@ -248,8 +234,12 @@ class EntityExtraction(nn.Module):
 
         # Final Linear
         ner_out = self.linear_ner(ner_out)
-
-        return ner_out
+        crf_out_decoded = self.crf.decode(ner_out)
+        if train:
+            crf_out = -1*self.crf(ner_out, y_word, mask)
+        else:
+            crf_out = None
+        return ner_out, crf_out_decoded, crf_out
 
 
 
@@ -290,7 +280,7 @@ class ClassificationModelUtils:
         self.test_epoch_ner_f1s = []
 
         # CRF
-        self.crf_model = CRF(self.num_classes+1).to(device)
+        #self.crf_model = CRF(self.num_classes+1).to(device)
 
     def evaluate_classification_metrics(self, truth, prediction, type='ner'):
         if type == 'ner':
@@ -354,22 +344,22 @@ class ClassificationModelUtils:
                 data_test['x_padded'] = data_test['x_padded'].to(self.device)
                 #data_test['x_char_padded'] = data_test['x_char_padded'].to(self.device)
                 #data_test['x_postag_padded'] = data_test['x_postag_padded'].to(self.device)
-                #data_test['y_ner_padded'] = data_test['y_ner_padded'].to(self.device)
+                data_test['y_ner_padded'] = data_test['y_ner_padded'].to(self.device)
 
-                test_ner_out = self.model(data_test['x_padded']) #, data_test['x_char_padded'],
+                mask = torch.where(data_test['x_padded'] > 0, torch.Tensor([1]).type(torch.uint8).to(device),
+                                   torch.Tensor([0]).type(torch.uint8).to(device))
+
+                test_ner_out, test_crf_out, test_loss = self.model(data_test['x_padded'], mask, data_test['y_ner_padded']) #, data_test['x_char_padded'],
                                                            #data_test['x_postag_padded'])
 
                 # Loss
                 #test_loss = self.criterion_crossentropy(test_ner_out.transpose(2, 1), data_test['y_ner_padded'])
-                mask = torch.where(data_test['x_padded'] > 0, torch.Tensor([1]).type(torch.uint8).to(device),
-                                   torch.Tensor([0]).type(torch.uint8).to(device)).permute(1, 0)
-                test_loss = -1 * self.crf_model(test_ner_out.permute(1, 0, 2), data_test['y_ner_padded'].permute(1, 0), mask=mask)
                 test_losses.append(test_loss.item())
 
                 # Evaluation Metrics
                 #test_ner_out_result = torch.flatten(torch.argmax(test_ner_out, dim=2)).to('cpu').numpy()
-                test_ner_out_result = np.ravel(np.array(self.crf_model.decode(test_ner_out)))
-                test_ner_truth_result =torch.flatten(data_test['y_ner_padded']).to('cpu').numpy()
+                test_ner_out_result = np.ravel(np.array(test_crf_out))
+                test_ner_truth_result = torch.flatten(data_test['y_ner_padded']).to('cpu').numpy()
 
                 _ = [self.test_epoch_prediction_all.append(out) for out in test_ner_out_result]
                 _ = [self.test_epoch_truth_all.append(out) for out in test_ner_truth_result]
@@ -399,6 +389,7 @@ class ClassificationModelUtils:
     def train(self, num_epochs=10):
         index_metric_append = int(len(dataloader_train) / 4)
         for epoch in range(num_epochs):
+            self.crf_weights = []
             print(f"\n\n------------------------- Epoch - {epoch + 1} -------------------------")
             batch_losses = []
             batch_ner_accuracy = []
@@ -411,25 +402,27 @@ class ClassificationModelUtils:
 
             for batch_num, data in enumerate(dataloader_train):
                 self.optimizer.zero_grad()
-
+                self.crf_weights.append(self.model.crf.state_dict()['transitions'].to('cpu').numpy())
                 data['x_padded'] = data['x_padded'].to(self.device)
                 #data['x_char_padded'] = data['x_char_padded'].to(self.device)
                 #data['x_postag_padded'] = data['x_postag_padded'].to(self.device)
-                #data['y_ner_padded'] = data['y_ner_padded'].to(self.device)
+                data['y_ner_padded'] = data['y_ner_padded'].to(self.device)
 
-                ner_out = self.model(data['x_padded'])
+                mask = torch.where(data['x_padded'] > 0, torch.Tensor([1]).type(torch.uint8).to(device),
+                                   torch.Tensor([0]).type(torch.uint8).to(device))
+
+                ner_out, crf_out, loss = self.model(data['x_padded'], mask, data['y_ner_padded'])
                                      #data['x_char_padded'],
                                      #data['x_postag_padded'])
 
-                mask = torch.where(data['x_padded']>0,torch.Tensor([1]).type(torch.uint8).to(device),torch.Tensor([0]).type(torch.uint8).to(device)).permute(1,0)
+
 
                 # Loss
                 #loss = self.criterion_crossentropy(ner_out.transpose(2, 1), data['y_ner_padded'])
-                loss = -1*self.crf_model(ner_out.permute(1,0,2), data['y_ner_padded'].permute(1,0), mask=mask)
                 batch_losses.append(loss.item())
 
                 # Evaluation Metric
-                test_ner_out_result = np.ravel(np.array(self.crf_model.decode(ner_out)))
+                test_ner_out_result = np.ravel(np.array(crf_out))
                 #test_ner_out_result = torch.flatten(torch.argmax(ner_out, dim=2)).to('cpu').numpy()
                 test_ner_truth_result = torch.flatten(data['y_ner_padded']).to('cpu').numpy()
 
@@ -469,7 +462,7 @@ class ClassificationModelUtils:
 
 
 if __name__ == "__main__":
-    EPOCHS = 15
+    EPOCHS = 10
     DROPOUT = 0.4
     RNN_STACK_SIZE = 1
     LEARNING_RATE = 0.001
@@ -482,7 +475,7 @@ if __name__ == "__main__":
                          "Outputs": "NER Only",
                          "Loss": "CRF with mask",
                          })
-        mlflow.log_param("COMMENT", "Evaluate by crf.decode")
+        mlflow.log_param("COMMENT", "CRF now is trainable")
         mlflow.log_param("EPOCHS", EPOCHS)
         mlflow.log_param("DROPOUT", DROPOUT)
         mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)
@@ -579,7 +572,6 @@ if __name__ == "__main__":
         model_utils.train(EPOCHS)
 
         mlflow.pytorch.log_model(model_utils.model, 'ner_model')
-        mlflow.pytorch.log_model(model_utils.crf_model, 'crf_model')
 
 
         mlflow.log_metric("Loss-Test", model_utils.test_epoch_loss[-1])

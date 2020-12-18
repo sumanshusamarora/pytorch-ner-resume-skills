@@ -105,7 +105,6 @@ def tokenize_character(X_text_list_train, x_padded_train, x_padded_test, x_encod
 
     return x_char_encoder, x_char_padded_train, x_char_padded_test
 
-
 def tokenize_pos_tags(X_tags_train, X_tags_test):
     x_postag_encoder=StaticTokenizerEncoder(sample=X_tags_train,
                                      append_eos=False,
@@ -123,6 +122,22 @@ def tokenize_pos_tags(X_tags_train, X_tags_test):
 
     #x_postag_ohe_test = torch.nn.functional.one_hot(x_postag_padded_test)
     return x_postag_encoder, x_postag_padded_train, x_postag_padded_test
+
+
+class create_tags_and_one_hot_encode:
+    def __init__(self, train):
+        self.train = train
+        self.cats = torch.max(torch.flatten(x_postag_padded_train)).item()+1 # +1 for unknown
+
+    def transform(self, test):
+        test_tensor = torch.zeros((test.shape[0], test.shape[1], self.cats))
+        for i in test:
+            for k in test:
+                try:
+                    test_tensor[i][k][test[i][k].item()] = 1
+                except:
+                    pass
+        return test_tensor
 
 def encode_ner_y(y_ner_list_train, y_ner_list_test, CLASS_COUNT_DICT):
     y_ner_encoder = LabelEncoder(sample=CLASS_COUNT_DICT.keys())
@@ -154,8 +169,8 @@ def calculate_sample_weights(y_ner_padded_train):
 #Build Model
 class EntityExtraction(nn.Module):
 
-    def __init__(self, num_classes, rnn_hidden_size=512, rnn_stack_size=2, rnn_bidirectional=True, word_embed_dim=124,
-                 tag_embed_dim=124, char_embed_dim=124, rnn_embed_dim=512,
+    def __init__(self, num_classes, rnn_hidden_size=512, rnn_stack_size=2, rnn_bidirectional=True, word_embed_dim=256,
+                 tag_embed_dim=256, char_embed_dim=124, rnn_embed_dim=512,
                  char_embedding=True, dropout_ratio=0.3):
         super().__init__()
         # self variables
@@ -174,20 +189,20 @@ class EntityExtraction(nn.Module):
                                        embedding_dim=self.word_embed_dim)
         self.word_embed_drop = nn.Dropout(self.dropout_ratio)
 
-        self.char_embed = nn.Embedding(num_embeddings=x_char_encoder.vocab_size,
-                                       embedding_dim=self.char_embed_dim)
-        self.char_embed_drop = nn.Dropout(self.dropout_ratio)
+        #self.char_embed = nn.Embedding(num_embeddings=x_char_encoder.vocab_size,
+        #                               embedding_dim=self.char_embed_dim)
+        #self.char_embed_drop = nn.Dropout(self.dropout_ratio)
 
-        self.postag_embed = nn.Embedding(num_embeddings=x_postag_encoder.vocab_size,
-                                         embedding_dim=self.tag_embed_dim)
-        self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
+        #self.postag_embed = nn.Embedding(num_embeddings=x_postag_encoder.vocab_size,
+        #                                 embedding_dim=self.tag_embed_dim)
+        #self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
 
         # CNN for character input
-        self.conv_char = nn.Conv1d(in_channels=self.char_embed_dim, out_channels=52, kernel_size=3, padding=1)
+        #self.conv_char = nn.Conv1d(in_channels=self.char_embed_dim, out_channels=52, kernel_size=3, padding=1)
         # self.maxpool_char = nn.MaxPool1d(kernel_size=3)
 
         # LSTM for concatenated input
-        self.lstm_ner = nn.LSTM(input_size=5760,
+        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim,
                                 hidden_size=self.rnn_hidden_size,
                                 num_layers=self.rnn_stack_size,
                                 batch_first=True,
@@ -195,34 +210,36 @@ class EntityExtraction(nn.Module):
                                 bidirectional=self.rnn_bidirectional)
         self.lstm_ner_drop = nn.Dropout(self.dropout_ratio)
 
-        # Linear layers
-        self.linear1 = nn.Linear(in_features=1024, out_features=512)
-        self.linear_drop = nn.Dropout(self.dropout_ratio)
-        self.linear_ner = nn.Linear(in_features=512, out_features=self.NUM_CLASSES + 1)  # +1 for padding 0
+        self.linear_in_size = self.rnn_hidden_size*2 if self.rnn_bidirectional else self.rnn_hidden_size
 
-    def forward(self, x_word, x_char, x_pos):
-        x_char_shape = x_char.shape
-        batch_size = x_char_shape[0]
+        # Linear layers
+        self.linear1 = nn.Linear(in_features=self.linear_in_size, out_features=128)
+        self.linear_drop = nn.Dropout(self.dropout_ratio)
+        self.linear_ner = nn.Linear(in_features=128, out_features=self.NUM_CLASSES + 1)  # +1 for padding 0
+
+    def forward(self, x_word):
+        #x_char_shape = x_char.shape
+        #batch_size = x_char_shape[0]
 
         word_out = self.word_embed(x_word)
         word_out = self.word_embed_drop(word_out)
 
-        char_out = self.char_embed(x_char)
-        char_out = self.char_embed_drop(char_out)
+        #char_out = self.char_embed(x_char)
+        #char_out = self.char_embed_drop(char_out)
 
-        tag_out = self.postag_embed(x_pos)
-        tag_out = self.tag_embed_drop(tag_out)
+        #tag_out = self.postag_embed(x_pos)
+        #tag_out = self.tag_embed_drop(tag_out)
 
-        char_out_shape = char_out.shape
-        char_out = char_out.view(char_out_shape[0], char_out_shape[1] * char_out_shape[2], char_out_shape[3])
-        char_out = self.conv_char(char_out.permute(0, 2, 1))
-        char_out = char_out.view(char_out_shape[0], char_out_shape[1], -1)
+        #char_out_shape = char_out.shape
+        #char_out = char_out.view(char_out_shape[0], char_out_shape[1] * char_out_shape[2], char_out_shape[3])
+        #char_out = self.conv_char(char_out.permute(0, 2, 1))
+        #char_out = char_out.view(char_out_shape[0], char_out_shape[1], -1)
 
-        concat = torch.cat((word_out, char_out, tag_out), dim=2)
-        concat = F.relu(concat)
+        #concat = torch.cat((word_out, char_out, tag_out), dim=2)
+        #concat = F.relu(concat)
 
         # NER LSTM
-        ner_lstm_out, _ = self.lstm_ner(concat)
+        ner_lstm_out, _ = self.lstm_ner(word_out)
         ner_lstm_out = self.lstm_ner_drop(ner_lstm_out)
 
         # Linear
@@ -237,7 +254,7 @@ class EntityExtraction(nn.Module):
 
 
 class ClassificationModelUtils:
-    def __init__(self, dataloader_train, dataloader_test, ner_class_weights, num_classes, cuda=True, dropout=0.3, rnn_stack_size=2, learning_rate=0.001):
+    def __init__(self, dataloader_train, dataloader_test, ner_class_weights, num_classes, cuda=True, dropout=0.3, rnn_stack_size=2, learning_rate=0.001, word_embed_dim=256):
         if cuda:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             torch.cuda.empty_cache()
@@ -246,7 +263,7 @@ class ClassificationModelUtils:
 
         self.learning_rate = learning_rate
 
-        self.model = EntityExtraction(num_classes=NUM_CLASSES, dropout_ratio=dropout, rnn_stack_size=rnn_stack_size)
+        self.model = EntityExtraction(num_classes=NUM_CLASSES, dropout_ratio=dropout, rnn_stack_size=rnn_stack_size, word_embed_dim=word_embed_dim)
         self.model = self.model.to(self.device)
 
         self.dataloader_train = dataloader_train
@@ -335,12 +352,12 @@ class ClassificationModelUtils:
             with torch.no_grad():
 
                 data_test['x_padded'] = data_test['x_padded'].to(self.device)
-                data_test['x_char_padded'] = data_test['x_char_padded'].to(self.device)
-                data_test['x_postag_padded'] = data_test['x_postag_padded'].to(self.device)
-                data_test['y_ner_padded'] = data_test['y_ner_padded'].to(self.device)
+                #data_test['x_char_padded'] = data_test['x_char_padded'].to(self.device)
+                #data_test['x_postag_padded'] = data_test['x_postag_padded'].to(self.device)
+                #data_test['y_ner_padded'] = data_test['y_ner_padded'].to(self.device)
 
-                test_ner_out = self.model(data_test['x_padded'], data_test['x_char_padded'],
-                                                           data_test['x_postag_padded'])
+                test_ner_out = self.model(data_test['x_padded']) #, data_test['x_char_padded'],
+                                                           #data_test['x_postag_padded'])
 
                 # Loss
                 #test_loss = self.criterion_crossentropy(test_ner_out.transpose(2, 1), data_test['y_ner_padded'])
@@ -395,13 +412,13 @@ class ClassificationModelUtils:
                 self.optimizer.zero_grad()
 
                 data['x_padded'] = data['x_padded'].to(self.device)
-                data['x_char_padded'] = data['x_char_padded'].to(self.device)
-                data['x_postag_padded'] = data['x_postag_padded'].to(self.device)
-                data['y_ner_padded'] = data['y_ner_padded'].to(self.device)
+                #data['x_char_padded'] = data['x_char_padded'].to(self.device)
+                #data['x_postag_padded'] = data['x_postag_padded'].to(self.device)
+                #data['y_ner_padded'] = data['y_ner_padded'].to(self.device)
 
-                ner_out = self.model(data['x_padded'],
-                                     data['x_char_padded'],
-                                     data['x_postag_padded'])
+                ner_out = self.model(data['x_padded'])
+                                     #data['x_char_padded'],
+                                     #data['x_postag_padded'])
 
                 mask = torch.where(data['x_padded']>0,torch.Tensor([1]).type(torch.uint8).to(device),torch.Tensor([0]).type(torch.uint8).to(device)).permute(1,0)
 
@@ -450,15 +467,16 @@ class ClassificationModelUtils:
 
 
 if __name__ == "__main__":
-    EPOCHS = 12
+    EPOCHS = 15
     DROPOUT = 0.5
     RNN_STACK_SIZE = 1
     LEARNING_RATE = 0.0001
-    TEST_SPLIT = 0.3
+    TEST_SPLIT = 0.33
+    WORD_EMBED_DIM = 256
     mlflow.set_experiment("PytorchDualLoss")
     with mlflow.start_run() as run:
         mlflow.set_tags({"Framework":"Pytorch",
-                         "Embeddings":"Word-Char-pos",
+                         "Embeddings":"Word",
                          "Outputs": "NER Only",
                          "Loss": "CRF with mask",
                          })
@@ -467,6 +485,7 @@ if __name__ == "__main__":
         mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)
         mlflow.log_param("LEARNING_RATE", LEARNING_RATE)
         mlflow.log_param("TEST_SPLIT", TEST_SPLIT)
+        mlflow.log_param("WORD_EMBED_DIM", WORD_EMBED_DIM)
         # Load Data
         X_text_list, y_ner_list = load_data('data/dataset_ready.pkl')
 
@@ -494,18 +513,19 @@ if __name__ == "__main__":
         x_encoder, x_padded_train, x_padded_test = tokenize_sentence(X_text_list_train, X_text_list_test, MAX_SENTENCE_LEN)
 
         # Tokenize Characters
-        x_char_encoder, x_char_padded_train, x_char_padded_test = tokenize_character(X_text_list_train, x_padded_train, x_padded_test, x_encoder)
+        #x_char_encoder, x_char_padded_train, x_char_padded_test = tokenize_character(X_text_list_train, x_padded_train, x_padded_test, x_encoder)
 
         # Tokenize Pos tags
-        x_postag_encoder, x_postag_padded_train, x_postag_padded_test = tokenize_pos_tags(X_tags_train, X_tags_test)
+        #x_postag_encoder, x_postag_padded_train, x_postag_padded_test = tokenize_pos_tags(X_tags_train, X_tags_test)
+
 
         # Encode y NER
         y_ner_encoder, y_ner_padded_train, y_ner_padded_test = encode_ner_y(y_ner_list_train, y_ner_list_test, CLASS_COUNT_DICT)
 
         #Create train dataloader
         dataset_train = Dataset([{'x_padded': x_padded_train[i],
-                                  'x_char_padded': x_char_padded_train[i],
-                                  'x_postag_padded': x_postag_padded_train[i],
+                                  #'x_char_padded': x_char_padded_train[i],
+                                  #'x_postag_padded': x_postag_padded_train[i],
                                   'y_ner_padded': y_ner_padded_train[i],
                                   } for i in range(x_padded_train.shape[0])])
 
@@ -514,23 +534,24 @@ if __name__ == "__main__":
 
         # Create test dataloader
         dataset_test = Dataset([{'x_padded': x_padded_test[i],
-                                 'x_char_padded': x_char_padded_test[i],
-                                 'x_postag_padded': x_postag_padded_test[i],
+                                 #'x_char_padded': x_char_padded_test[i],
+                                 #'x_postag_padded': x_postag_padded_test[i],
                                  'y_ner_padded': y_ner_padded_test[i],
                                  } for i in range(x_padded_test.shape[0])])
 
         dataloader_test = DataLoader(dataset=dataset_test, batch_size=512, shuffle=False)
         """
         models = mlflow.pytorch.load_model(
-            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/27da0bae890f4a9d8a895b05d5718ee7/artifacts/ner_model')
-        k = 8
+            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/b7ed5b5ce12f4af28d3a5e6e2e024b0a/artifacts/ner_model')
+        k_list = [3, 4, 13, 50, 56, 77, 95, 115]
+        k = k_list[3]
         for i, data in enumerate(dataloader_test):
             if i > 1:
                 out = models(data['x_padded'][k:k+1].to(device), data['x_char_padded'][k:k+1].to(device), data['x_postag_padded'][k:k+1].to(device))
                 break
         
         crf_models = mlflow.pytorch.load_model(
-            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/27da0bae890f4a9d8a895b05d5718ee7/artifacts/crf_model')
+            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/b7ed5b5ce12f4af28d3a5e6e2e024b0a/artifacts/crf_model')
             crf_out = crf_models.decode(out)
             
             result = [word[0] for word in crf_out]
@@ -543,7 +564,13 @@ if __name__ == "__main__":
 
         ner_class_weights = calculate_sample_weights(y_ner_padded_train)
 
-        model_utils = ClassificationModelUtils(dataloader_train, dataloader_test, ner_class_weights, num_classes=NUM_CLASSES, cuda=GPU, rnn_stack_size=RNN_STACK_SIZE)
+        model_utils = ClassificationModelUtils(dataloader_train,
+                                               dataloader_test,
+                                               ner_class_weights,
+                                               num_classes=NUM_CLASSES,
+                                               cuda=GPU,
+                                               rnn_stack_size=RNN_STACK_SIZE,
+                                               word_embed_dim=WORD_EMBED_DIM)
         model_utils.train(EPOCHS)
 
         mlflow.pytorch.log_model(model_utils.model, 'ner_model')

@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import re
+import json
 
 dataset = pd.read_json('../data/Entity Recognition in Resumes.json', lines=True)
 cv_text = np.array(dataset.content)

@@ -236,7 +236,7 @@ class EntityExtraction(nn.Module):
         ner_out = self.linear_ner(ner_out)
         crf_out_decoded = self.crf.decode(ner_out)
         if train:
-            crf_out = -1*self.crf(ner_out, y_word, mask)
+            crf_out = -1*self.crf(emissions=ner_out, tags=y_word, mask=mask, reduction="token_mean")
         else:
             crf_out = None
         return ner_out, crf_out_decoded, crf_out
@@ -362,8 +362,7 @@ class ClassificationModelUtils:
                 test_ner_truth_result = torch.flatten(data_test['y_ner_padded']).to('cpu').numpy()
 
                 _ = [self.test_epoch_prediction_all.append(out) for out in test_ner_out_result]
-                _ = [self.test_epoch_truth_all.append(out) for out in test_ner_truth_result]
-
+                _ = [self.test_epoch_truth_all.append(out) for out in np.where(test_ner_truth_result == 0, 9, test_ner_truth_result)]
 
                 test_ner_accuracy, test_ner_precision, test_ner_recall, test_ner_f1 = self.evaluate_classification_metrics(
                     self.test_epoch_truth_all, self.test_epoch_prediction_all)
@@ -427,7 +426,7 @@ class ClassificationModelUtils:
                 test_ner_truth_result = torch.flatten(data['y_ner_padded']).to('cpu').numpy()
 
                 _ = [self.epoch_prediction_all.append(out) for out in test_ner_out_result]
-                _ = [self.epoch_truth_all.append(out) for out in test_ner_truth_result]
+                _ = [self.epoch_truth_all.append(out) for out in np.where(test_ner_truth_result==0, 9, test_ner_truth_result)]
 
                 ner_accuracy, ner_precision, ner_recall, ner_f1 = self.evaluate_classification_metrics(self.epoch_truth_all, self.epoch_prediction_all)
 
@@ -462,12 +461,13 @@ class ClassificationModelUtils:
 
 
 if __name__ == "__main__":
-    EPOCHS = 10
+    EPOCHS = 15
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2
-    LEARNING_RATE = 0.001
+    LEARNING_RATE = 0.0001
     TEST_SPLIT = 0.33
-    WORD_EMBED_DIM = 256
+    WORD_EMBED_DIM = 512
+    GPU = True
     mlflow.set_experiment("PytorchDualLoss")
     with mlflow.start_run() as run:
         mlflow.set_tags({"Framework":"Pytorch",
@@ -475,7 +475,8 @@ if __name__ == "__main__":
                          "Outputs": "NER Only",
                          "Loss": "CRF with mask",
                          })
-        mlflow.log_param("COMMENT", "CRF now is trainable")
+        
+        mlflow.log_param("COMMENT", "Hacked truth 0 to 9 to show correct evaluation")
         mlflow.log_param("EPOCHS", EPOCHS)
         mlflow.log_param("DROPOUT", DROPOUT)
         mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)
@@ -557,9 +558,6 @@ if __name__ == "__main__":
             
         """
         # Build model
-        GPU = True
-        mlflow.log_param("CUDA", GPU)
-
         ner_class_weights = calculate_sample_weights(y_ner_padded_train)
 
         model_utils = ClassificationModelUtils(dataloader_train,

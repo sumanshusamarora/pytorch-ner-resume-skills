@@ -463,8 +463,8 @@ class ClassificationModelUtils:
 
 if __name__ == "__main__":
     EPOCHS = 10
-    DROPOUT = 0.4
-    RNN_STACK_SIZE = 1
+    DROPOUT = 0.5
+    RNN_STACK_SIZE = 2
     LEARNING_RATE = 0.001
     TEST_SPLIT = 0.33
     WORD_EMBED_DIM = 256

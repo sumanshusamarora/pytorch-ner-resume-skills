@@ -367,7 +367,8 @@ class ClassificationModelUtils:
                 test_losses.append(test_loss.item())
 
                 # Evaluation Metrics
-                test_ner_out_result = torch.flatten(torch.argmax(test_ner_out, dim=2)).to('cpu').numpy()
+                #test_ner_out_result = torch.flatten(torch.argmax(test_ner_out, dim=2)).to('cpu').numpy()
+                test_ner_out_result = np.ravel(np.array(self.crf_model.decode(test_ner_out)))
                 test_ner_truth_result =torch.flatten(data_test['y_ner_padded']).to('cpu').numpy()
 
                 _ = [self.test_epoch_prediction_all.append(out) for out in test_ner_out_result]
@@ -427,8 +428,9 @@ class ClassificationModelUtils:
                 loss = -1*self.crf_model(ner_out.permute(1,0,2), data['y_ner_padded'].permute(1,0), mask=mask)
                 batch_losses.append(loss.item())
 
-                # Evaluation Metrics
-                test_ner_out_result = torch.flatten(torch.argmax(ner_out, dim=2)).to('cpu').numpy()
+                # Evaluation Metric
+                test_ner_out_result = np.ravel(np.array(self.crf_model.decode(ner_out)))
+                #test_ner_out_result = torch.flatten(torch.argmax(ner_out, dim=2)).to('cpu').numpy()
                 test_ner_truth_result = torch.flatten(data['y_ner_padded']).to('cpu').numpy()
 
                 _ = [self.epoch_prediction_all.append(out) for out in test_ner_out_result]
@@ -468,9 +470,9 @@ class ClassificationModelUtils:
 
 if __name__ == "__main__":
     EPOCHS = 15
-    DROPOUT = 0.5
+    DROPOUT = 0.4
     RNN_STACK_SIZE = 1
-    LEARNING_RATE = 0.0001
+    LEARNING_RATE = 0.001
     TEST_SPLIT = 0.33
     WORD_EMBED_DIM = 256
     mlflow.set_experiment("PytorchDualLoss")
@@ -480,6 +482,7 @@ if __name__ == "__main__":
                          "Outputs": "NER Only",
                          "Loss": "CRF with mask",
                          })
+        mlflow.log_param("COMMENT", "Evaluate by crf.decode")
         mlflow.log_param("EPOCHS", EPOCHS)
         mlflow.log_param("DROPOUT", DROPOUT)
         mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)
@@ -542,20 +545,22 @@ if __name__ == "__main__":
         dataloader_test = DataLoader(dataset=dataset_test, batch_size=512, shuffle=False)
         """
         models = mlflow.pytorch.load_model(
-            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/b7ed5b5ce12f4af28d3a5e6e2e024b0a/artifacts/ner_model')
-        k_list = [3, 4, 13, 50, 56, 77, 95, 115]
-        k = k_list[3]
-        for i, data in enumerate(dataloader_test):
-            if i > 1:
-                out = models(data['x_padded'][k:k+1].to(device), data['x_char_padded'][k:k+1].to(device), data['x_postag_padded'][k:k+1].to(device))
-                break
-        
-        crf_models = mlflow.pytorch.load_model(
-            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/b7ed5b5ce12f4af28d3a5e6e2e024b0a/artifacts/crf_model')
-            crf_out = crf_models.decode(out)
+            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/8c06df79f5634eeab7b4dc00b6bbc790/artifacts/ner_model')
             
-            result = [word[0] for word in crf_out]
-            truth = [word.item() for word in data['y_ner_padded'][k]]
+        crf_models = mlflow.pytorch.load_model(
+            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/8c06df79f5634eeab7b4dc00b6bbc790/artifacts/crf_model')
+        
+        for i, data in enumerate(dataloader_test):
+            break 
+            
+        k_list = [i for i, tens in enumerate(data['y_ner_padded']) if torch.unique(tens).shape[0]>2]
+        k = k_list[2]
+        out = models(data['x_padded'][k:k+1].to(device))
+
+        crf_out = crf_models.decode(out)
+        
+        result = [word[0] for word in crf_out]
+        truth = [word.item() for word in data['y_ner_padded'][k]]
             
         """
         # Build model

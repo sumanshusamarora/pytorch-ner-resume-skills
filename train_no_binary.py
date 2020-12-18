@@ -467,7 +467,7 @@ class ClassificationModelUtils:
 
 
 if __name__ == "__main__":
-    EPOCHS = 12
+    EPOCHS = 13
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized
     LEARNING_RATE = 0.0001 #Finalized
@@ -483,7 +483,7 @@ if __name__ == "__main__":
                          "Loss": "CRF with mask",
                          })
         mlflow.log_param("CUDA", GPU)
-        mlflow.log_param("COMMENT", "Added log softmax before CRF, no sample weight")
+        mlflow.log_param("COMMENT", "Removed log softmax before CRF, no sample weight")
         mlflow.log_param("EPOCHS", EPOCHS)
         mlflow.log_param("DROPOUT", DROPOUT)
         mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)

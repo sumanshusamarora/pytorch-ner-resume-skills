@@ -153,7 +153,7 @@ def calculate_sample_weights(y_ner_padded_train):
 class EntityExtraction(nn.Module):
 
     def __init__(self, num_classes, rnn_hidden_size=512, rnn_stack_size=2, rnn_bidirectional=True, word_embed_dim=256,
-                 tag_embed_dim=256, char_embed_dim=128, rnn_embed_dim=512,
+                 tag_embed_dim=256, char_embed_dim=128, cnn_out_channels=64, rnn_embed_dim=512,
                  char_embedding=True, dropout_ratio=0.3, class_weights=None):
         super().__init__()
         # self variables
@@ -166,6 +166,7 @@ class EntityExtraction(nn.Module):
         self.rnn_hidden_size = rnn_hidden_size
         self.rnn_stack_size = rnn_stack_size
         self.rnn_bidirectional = rnn_bidirectional
+        self.cnn_out_channels = cnn_out_channels
         self.class_weights = torch.FloatTensor(class_weights).to(device)
 
         # Embedding Layers
@@ -183,7 +184,7 @@ class EntityExtraction(nn.Module):
 
         # CNN for character input
         self.cnn_seq = nn.Sequential(
-                                    nn.Conv1d(in_channels=self.char_embed_dim, out_channels=52, kernel_size=5, padding=1),
+                                    nn.Conv1d(in_channels=self.char_embed_dim, out_channels=self.cnn_out_channels, kernel_size=3, padding=1),
                                     nn.ReLU(),
                                     #nn.MaxPool1d(kernel_size=5)
                                     )

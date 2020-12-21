@@ -202,11 +202,11 @@ class EntityExtraction(nn.Module):
         self.linear_in_size = self.rnn_hidden_size*2 if self.rnn_bidirectional else self.rnn_hidden_size
 
         # Linear layers
-        self.linear1 = nn.Linear(in_features=self.linear_in_size, out_features=self.linear_in_size*2)
+        self.linear1 = nn.Linear(in_features=self.linear_in_size, out_features=256)
         self.linear_drop = nn.Dropout(self.dropout_ratio)
         #self.linear2 = nn.Linear(in_features=self.linear_in_size*2, out_features=128)
         #self.linear_drop2 = nn.Dropout(self.dropout_ratio)
-        self.linear_ner = nn.Linear(in_features=self.linear_in_size, out_features=self.NUM_CLASSES + 1)  # +1 for padding 0
+        self.linear_ner = nn.Linear(in_features=256, out_features=self.NUM_CLASSES + 1)  # +1 for padding 0
         self.crf = CRF(self.NUM_CLASSES+1, batch_first=True)
 
     def forward(self, x_word, x_pos, x_char, mask, y_word=None, train=True):

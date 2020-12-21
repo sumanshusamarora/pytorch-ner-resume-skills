@@ -483,7 +483,7 @@ def git_commit_push(commit_message, add=True, push=False):
 
 if __name__ == "__main__":
     COMMENT = "Added char cnn layer"
-    EPOCHS = 20
+    EPOCHS = 30
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized
     LEARNING_RATE = 0.001 #Finalized

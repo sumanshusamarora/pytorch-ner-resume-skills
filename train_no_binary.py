@@ -182,7 +182,7 @@ class EntityExtraction(nn.Module):
         self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
 
         # CNN for character input
-        self.char_lstm = nn.LSTM(input_size=self.char_embed_dim, hidden_size=self.rnn_hidden_size/2, batch_first=True)
+        self.char_lstm = nn.LSTM(input_size=self.char_embed_dim, hidden_size=self.rnn_hidden_size/2, batch_first=True, dropout=self.dropout_ratio,)
 
         # LSTM for concatenated input
         self.lstm_ner = nn.LSTM(input_size=1808,# self.word_embed_dim+self.tag_embed_dim+1820,
@@ -217,6 +217,7 @@ class EntityExtraction(nn.Module):
         tag_out = self.postag_embed(x_pos)
         tag_out = self.tag_embed_drop(tag_out)
 
+        import pdb; pdb.set_trace()
         char_out_shape = char_out.size()
         char_out = char_out.view(-1, char_out_shape[-2], char_out_shape[-1]) # n*seq len, char len, char embed size
         char_out = self.char_lstm(char_out)

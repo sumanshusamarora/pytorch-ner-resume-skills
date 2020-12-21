@@ -462,13 +462,18 @@ class ClassificationModelUtils:
             print(classification_report(self.test_epoch_truth_all, self.test_epoch_prediction_all))
             #self.plot_graphs()
 
-def git_commit_push(commit_message, add=True, push=True):
+def git_commit_push(commit_message, add=True, push=False):
     if add:
         subprocess.run(["git", "add", "."])
 
     subprocess.run(['git', 'commit', '-m', f'{commit_message}'])
 
-    subprocess.run
+    if push:
+        subprocess.run(['git', 'push'])
+
+    return subprocess.getoutput(["git", "log", '--format="%H"', "-n", "1"])
+
+commit_id = git_commit_push(commit_message="Comparing issues after adding CNN")
 
 if __name__ == "__main__":
     EPOCHS = 13

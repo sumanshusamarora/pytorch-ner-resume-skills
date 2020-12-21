@@ -1,6 +1,3 @@
-"""
-
-"""
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import LabelEncoder as sk_le, OneHotEncoder
@@ -20,6 +17,7 @@ import nltk
 import random
 import mlflow
 import mlflow.pytorch
+import subprocess
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -464,7 +462,13 @@ class ClassificationModelUtils:
             print(classification_report(self.test_epoch_truth_all, self.test_epoch_prediction_all))
             #self.plot_graphs()
 
+def git_commit_push(commit_message, add=True, push=True):
+    if add:
+        subprocess.run(["git", "add", "."])
 
+    subprocess.run(['git', 'commit', '-m', f'{commit_message}'])
+
+    subprocess.run
 
 if __name__ == "__main__":
     EPOCHS = 13
@@ -548,7 +552,6 @@ if __name__ == "__main__":
         """
         models = mlflow.pytorch.load_model(
             'file:///home/sam/work/research/ner-domain-specific/mlruns/1/c8c25fed508a486fb0c81e05ce32ae91/artifacts/ner_model')
-
         for i, data in enumerate(dataloader_train):
             break
             
@@ -593,4 +596,6 @@ if __name__ == "__main__":
 
         mlflow.log_metric("F1-Test", model_utils.test_epoch_ner_f1s[-1])
         mlflow.log_metric("F1-Train", model_utils.epoch_ner_f1s[-1])
+
+
         model_utils.plot_graphs()

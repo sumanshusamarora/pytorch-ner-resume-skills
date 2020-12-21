@@ -1,0 +1,1 @@
+Removed log softmax before CRF, no sample weight

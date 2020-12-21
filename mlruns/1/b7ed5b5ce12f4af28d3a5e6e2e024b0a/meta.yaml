@@ -2,7 +2,7 @@ artifact_uri: file:///home/sam/work/research/ner-domain-specific/mlruns/1/b7ed5b
 end_time: 1608205820693
 entry_point_name: ''
 experiment_id: '1'
-lifecycle_stage: active
+lifecycle_stage: deleted
 name: ''
 run_id: b7ed5b5ce12f4af28d3a5e6e2e024b0a
 run_uuid: b7ed5b5ce12f4af28d3a5e6e2e024b0a

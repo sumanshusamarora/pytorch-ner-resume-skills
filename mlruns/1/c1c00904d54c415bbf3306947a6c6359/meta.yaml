@@ -2,7 +2,7 @@ artifact_uri: file:///home/sam/work/research/ner-domain-specific/mlruns/1/c1c009
 end_time: null
 entry_point_name: ''
 experiment_id: '1'
-lifecycle_stage: active
+lifecycle_stage: deleted
 name: ''
 run_id: c1c00904d54c415bbf3306947a6c6359
 run_uuid: c1c00904d54c415bbf3306947a6c6359

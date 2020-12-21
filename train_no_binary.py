@@ -186,7 +186,7 @@ class EntityExtraction(nn.Module):
         self.cnn_seq = nn.Sequential(
                                     nn.Conv1d(in_channels=self.char_embed_dim, out_channels=self.cnn_out_channels, kernel_size=3, padding=1),
                                     nn.ReLU(),
-                                    #nn.MaxPool1d(kernel_size=5)
+                                    nn.MaxPool1d(kernel_size=106)
                                     )
 
         # LSTM for concatenated input

@@ -182,11 +182,7 @@ class EntityExtraction(nn.Module):
         self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
 
         # CNN for character input
-        self.cnn_seq = nn.Sequential(
-                                    nn.Conv1d(in_channels=self.char_embed_dim, out_channels=52, kernel_size=5, padding=1),
-                                    nn.ReLU(),
-                                    nn.MaxPool1d(kernel_size=5)
-                                    )
+        self.char_lstm = nn.LSTM(input_size=self.char_embed_dim, hidden_size=self.rnn_hidden_size/2, batch_first=True)
 
         # LSTM for concatenated input
         self.lstm_ner = nn.LSTM(input_size=1808,# self.word_embed_dim+self.tag_embed_dim+1820,
@@ -223,10 +219,8 @@ class EntityExtraction(nn.Module):
 
         char_out_shape = char_out.size()
         char_out = char_out.view(-1, char_out_shape[-2], char_out_shape[-1]) # n*seq len, char len, char embed size
-        char_out = char_out.permute(0, 2, 1) #Reshaped to fit to CNN
-        char_out = self.cnn_seq(char_out)
-        char_out = char_out.permute(0, 2, 1) # Bring it back to same shape
-        char_out = char_out.contiguous().view(batch_size, sentence_len, -1) # Reshape to original shape plus flatten
+        char_out = self.char_lstm(char_out)
+        char_out = char_out.contiguous().view(batch_size, sentence_len, -1) # Reshape to original shape plus flattens
 
         #concat = torch.cat((word_out, char_out, tag_out), dim=2)
         concat = torch.cat((word_out, tag_out, char_out), dim=2)
@@ -487,7 +481,7 @@ def git_commit_push(commit_message, add=True, push=False):
     return subprocess.getoutput('git log --format="%H" -n 1')
 
 if __name__ == "__main__":
-    COMMENT = "Added 2 linear layers before final linear layer"
+    COMMENT = "Char LSTM added"
     EPOCHS = 25
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized

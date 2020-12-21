@@ -182,7 +182,7 @@ class EntityExtraction(nn.Module):
         self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
 
         # CNN for character input
-        self.char_lstm = nn.LSTM(input_size=self.char_embed_dim, hidden_size=self.rnn_hidden_size/2, batch_first=True, dropout=self.dropout_ratio,)
+        self.char_lstm = nn.LSTM(input_size=self.char_embed_dim, hidden_size=int(self.rnn_hidden_size/2), batch_first=True, dropout=self.dropout_ratio,)
 
         # LSTM for concatenated input
         self.lstm_ner = nn.LSTM(input_size=1808,# self.word_embed_dim+self.tag_embed_dim+1820,

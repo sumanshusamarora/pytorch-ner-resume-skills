@@ -153,7 +153,7 @@ def calculate_sample_weights(y_ner_padded_train):
 class EntityExtraction(nn.Module):
 
     def __init__(self, num_classes, rnn_hidden_size=512, rnn_stack_size=2, rnn_bidirectional=True, word_embed_dim=256,
-                 tag_embed_dim=256, char_embed_dim=128, cnn_out_channels=64, rnn_embed_dim=512,
+                 tag_embed_dim=256, char_embed_dim=256, cnn_out_channels=256, rnn_embed_dim=512,
                  char_embedding=True, dropout_ratio=0.3, class_weights=None):
         super().__init__()
         # self variables
@@ -190,7 +190,7 @@ class EntityExtraction(nn.Module):
                                     )
 
         # LSTM for concatenated input
-        self.lstm_ner = nn.LSTM(input_size=1808,# self.word_embed_dim+self.tag_embed_dim+1820,
+        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim+self.tag_embed_dim+self.cnn_out_channels,
                                 hidden_size=self.rnn_hidden_size,
                                 num_layers=self.rnn_stack_size,
                                 batch_first=True,
@@ -226,9 +226,8 @@ class EntityExtraction(nn.Module):
         char_out = char_out.view(-1, char_out_shape[-2], char_out_shape[-1]) # n*seq len, char len, char embed size
         char_out = char_out.permute(0, 2, 1) #Reshaped to fit to CNN
         char_out = self.cnn_seq(char_out)
-        import pdb; pdb.set_trace()
-        char_out = char_out.permute(0, 2, 1) # Bring it back to same shape
-        char_out = char_out.contiguous().view(batch_size, sentence_len, -1) # Reshape to original shape plus flatten
+        char_out = char_out.squeeze(-1)
+        char_out = char_out.contiguous().view(batch_size, sentence_len, char_out.size(-1)) # Reshape to original shape plus flatten
 
         #concat = torch.cat((word_out, char_out, tag_out), dim=2)
         concat = torch.cat((word_out, tag_out, char_out), dim=2)
@@ -489,7 +488,7 @@ def git_commit_push(commit_message, add=True, push=False):
     return subprocess.getoutput('git log --format="%H" -n 1')
 
 if __name__ == "__main__":
-    COMMENT = "Added 2 linear layers before final linear layer"
+    COMMENT = "CNN max pool on whole embedding dim to return single value for each output channel"
     EPOCHS = 25
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized

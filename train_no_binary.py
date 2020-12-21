@@ -473,9 +473,8 @@ def git_commit_push(commit_message, add=True, push=False):
 
     return subprocess.getoutput('git log --format="%H" -n 1')
 
-commit_id = git_commit_push(commit_message="Comparing issues after adding CNN")
-
 if __name__ == "__main__":
+    COMMENT = "THE BEST MODEL"
     EPOCHS = 13
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized
@@ -492,7 +491,7 @@ if __name__ == "__main__":
                          "Loss": "CRF with mask",
                          })
         mlflow.log_param("CUDA", GPU)
-        mlflow.log_param("COMMENT", "Removed log softmax before CRF, no sample weight")
+        mlflow.log_param("COMMENT", COMMENT)
         mlflow.log_param("EPOCHS", EPOCHS)
         mlflow.log_param("DROPOUT", DROPOUT)
         mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)
@@ -602,5 +601,7 @@ if __name__ == "__main__":
         mlflow.log_metric("F1-Test", model_utils.test_epoch_ner_f1s[-1])
         mlflow.log_metric("F1-Train", model_utils.epoch_ner_f1s[-1])
 
+        commit_id = git_commit_push(commit_message=COMMENT)
+        mlflow.log_param("COMMIT ID", commit_id)
 
         model_utils.plot_graphs()

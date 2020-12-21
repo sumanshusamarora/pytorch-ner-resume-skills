@@ -202,8 +202,8 @@ class EntityExtraction(nn.Module):
         self.linear_in_size = self.rnn_hidden_size*2 if self.rnn_bidirectional else self.rnn_hidden_size
 
         # Linear layers
-        #self.linear1 = nn.Linear(in_features=self.linear_in_size, out_features=self.linear_in_size*2)
-        #self.linear_drop = nn.Dropout(self.dropout_ratio)
+        self.linear1 = nn.Linear(in_features=self.linear_in_size, out_features=self.linear_in_size*2)
+        self.linear_drop = nn.Dropout(self.dropout_ratio)
         #self.linear2 = nn.Linear(in_features=self.linear_in_size*2, out_features=128)
         #self.linear_drop2 = nn.Dropout(self.dropout_ratio)
         self.linear_ner = nn.Linear(in_features=self.linear_in_size, out_features=self.NUM_CLASSES + 1)  # +1 for padding 0
@@ -237,14 +237,14 @@ class EntityExtraction(nn.Module):
         ner_lstm_out = self.lstm_ner_drop(ner_lstm_out)
 
         # Linear
-        #ner_out = self.linear1(ner_lstm_out)
-        #ner_out = self.linear_drop(ner_out)
+        ner_out = self.linear1(ner_lstm_out)
+        ner_out = self.linear_drop(ner_out)
 
         #ner_out = self.linear2(ner_out)
         #ner_out = self.linear_drop2(ner_out)
 
         # Final Linear
-        ner_out = self.linear_ner(ner_lstm_out)
+        ner_out = self.linear_ner(ner_out)
 
         #if self.class_weights is not None:
         #    ner_out = ner_out * self.class_weights

@@ -183,12 +183,13 @@ class EntityExtraction(nn.Module):
 
         # CNN for character input
         self.cnn_seq = nn.Sequential(
-                                    nn.Conv1d(in_channels=self.char_embed_dim, out_channels=52, kernel_size=3, padding=1),
-                                    nn.MaxPool1d(kernel_size=3)
+                                    nn.Conv1d(in_channels=self.char_embed_dim, out_channels=52, kernel_size=5, padding=1),
+                                    nn.ReLU(),
+                                    nn.MaxPool1d(kernel_size=5)
                                     )
 
         # LSTM for concatenated input
-        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim+self.tag_embed_dim+1820,
+        self.lstm_ner = nn.LSTM(input_size=1808,# self.word_embed_dim+self.tag_embed_dim+1820,
                                 hidden_size=self.rnn_hidden_size,
                                 num_layers=self.rnn_stack_size,
                                 batch_first=True,
@@ -200,9 +201,9 @@ class EntityExtraction(nn.Module):
         self.linear_in_size = self.rnn_hidden_size*2 if self.rnn_bidirectional else self.rnn_hidden_size
 
         # Linear layers
-        self.linear1 = nn.Linear(in_features=self.linear_in_size, out_features=128)
-        self.linear_drop = nn.Dropout(self.dropout_ratio)
-        self.linear_ner = nn.Linear(in_features=128, out_features=self.NUM_CLASSES + 1)  # +1 for padding 0
+        #self.linear1 = nn.Linear(in_features=self.linear_in_size, out_features=128)
+        #self.linear_drop = nn.Dropout(self.dropout_ratio)
+        self.linear_ner = nn.Linear(in_features=self.linear_in_size, out_features=self.NUM_CLASSES + 1)  # +1 for padding 0
         self.crf = CRF(self.NUM_CLASSES+1, batch_first=True)
 
     def forward(self, x_word, x_pos, x_char, mask, y_word=None, train=True):
@@ -233,11 +234,11 @@ class EntityExtraction(nn.Module):
         ner_lstm_out = self.lstm_ner_drop(ner_lstm_out)
 
         # Linear
-        ner_out = self.linear1(ner_lstm_out)
-        ner_out = self.linear_drop(ner_out)
+        #ner_out = self.linear1(ner_lstm_out)
+        #ner_out = self.linear_drop(ner_out)
 
         # Final Linear
-        ner_out = self.linear_ner(ner_out)
+        ner_out = self.linear_ner(ner_lstm_out)
 
         #if self.class_weights is not None:
         #    ner_out = ner_out * self.class_weights
@@ -399,7 +400,7 @@ class ClassificationModelUtils:
         index_metric_append = int(len(dataloader_train) / 4)
         for epoch in range(num_epochs):
             self.crf_weights = []
-            print(f"\n\n------------------------- Epoch - {epoch + 1} -------------------------")
+            print(f"\n\n------------------------- Epoch - {epoch + 1}  of {num_epochs}-------------------------")
             batch_losses = []
             batch_ner_accuracy = []
             batch_ner_f1s = []
@@ -482,7 +483,7 @@ def git_commit_push(commit_message, add=True, push=False):
 
 if __name__ == "__main__":
     COMMENT = "Added char cnn layer"
-    EPOCHS = 50
+    EPOCHS = 20
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized
     LEARNING_RATE = 0.001 #Finalized
@@ -506,6 +507,8 @@ if __name__ == "__main__":
         mlflow.log_param("TEST_SPLIT", TEST_SPLIT)
         mlflow.log_param("WORD_EMBED_DIM", WORD_EMBED_DIM)
         mlflow.log_param("POSTAG_EMBED_DIM", POSTAG_EMBED_DIM)
+        commit_id = git_commit_push(commit_message=COMMENT, add=True, push=False)
+        mlflow.log_param("COMMIT ID", commit_id)
         # Load Data
         X_text_list, y_ner_list = load_data('data/dataset_ready.pkl')
 
@@ -584,6 +587,7 @@ if __name__ == "__main__":
         model_utils = ClassificationModelUtils(dataloader_train,
                                                dataloader_test,
                                                ner_class_weights,
+                                               learning_rate=LEARNING_RATE,
                                                num_classes=NUM_CLASSES,
                                                cuda=GPU,
                                                rnn_stack_size=RNN_STACK_SIZE,
@@ -607,8 +611,5 @@ if __name__ == "__main__":
 
         mlflow.log_metric("F1-Test", model_utils.test_epoch_ner_f1s[-1])
         mlflow.log_metric("F1-Train", model_utils.epoch_ner_f1s[-1])
-
-        commit_id = git_commit_push(commit_message=COMMENT)
-        mlflow.log_param("COMMIT ID", commit_id)
 
         model_utils.plot_graphs()

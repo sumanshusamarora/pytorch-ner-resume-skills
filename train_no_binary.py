@@ -153,7 +153,7 @@ def calculate_sample_weights(y_ner_padded_train):
 class EntityExtraction(nn.Module):
 
     def __init__(self, num_classes, rnn_hidden_size=512, rnn_stack_size=2, rnn_bidirectional=True, word_embed_dim=256,
-                 tag_embed_dim=256, char_embed_dim=124, rnn_embed_dim=512,
+                 tag_embed_dim=256, char_embed_dim=128, rnn_embed_dim=512,
                  char_embedding=True, dropout_ratio=0.3, class_weights=None):
         super().__init__()
         # self variables
@@ -173,25 +173,28 @@ class EntityExtraction(nn.Module):
                                        embedding_dim=self.word_embed_dim)
         self.word_embed_drop = nn.Dropout(self.dropout_ratio)
 
-        #self.char_embed = nn.Embedding(num_embeddings=x_char_encoder.vocab_size,
-        #                               embedding_dim=self.char_embed_dim)
-        #self.char_embed_drop = nn.Dropout(self.dropout_ratio)
+        self.char_embed = nn.Embedding(num_embeddings=x_char_encoder.vocab_size,
+                                       embedding_dim=self.char_embed_dim)
+        self.char_embed_drop = nn.Dropout(self.dropout_ratio)
 
         self.postag_embed = nn.Embedding(num_embeddings=x_postag_encoder.vocab_size,
                                          embedding_dim=self.tag_embed_dim)
         self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
 
         # CNN for character input
-        #self.conv_char = nn.Conv1d(in_channels=self.char_embed_dim, out_channels=52, kernel_size=3, padding=1)
-        # self.maxpool_char = nn.MaxPool1d(kernel_size=3)
+        self.cnn_seq = nn.Sequential(
+                                    nn.Conv1d(in_channels=self.char_embed_dim, out_channels=52, kernel_size=3, padding=1),
+                                    nn.MaxPool1d(kernel_size=3)
+                                    )
 
         # LSTM for concatenated input
-        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim+self.tag_embed_dim,
+        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim+self.tag_embed_dim+1820,
                                 hidden_size=self.rnn_hidden_size,
                                 num_layers=self.rnn_stack_size,
                                 batch_first=True,
                                 dropout=self.dropout_ratio,
                                 bidirectional=self.rnn_bidirectional)
+
         self.lstm_ner_drop = nn.Dropout(self.dropout_ratio)
 
         self.linear_in_size = self.rnn_hidden_size*2 if self.rnn_bidirectional else self.rnn_hidden_size
@@ -202,26 +205,28 @@ class EntityExtraction(nn.Module):
         self.linear_ner = nn.Linear(in_features=128, out_features=self.NUM_CLASSES + 1)  # +1 for padding 0
         self.crf = CRF(self.NUM_CLASSES+1, batch_first=True)
 
-    def forward(self, x_word, x_pos, mask, y_word=None, train=True):
-        #x_char_shape = x_char.shape
-        #batch_size = x_char_shape[0]
+    def forward(self, x_word, x_pos, x_char, mask, y_word=None, train=True):
+        batch_size = x_char.shape[0]
+        sentence_len = x_char.shape[1]
 
         word_out = self.word_embed(x_word)
         word_out = self.word_embed_drop(word_out)
 
-        #char_out = self.char_embed(x_char)
-        #char_out = self.char_embed_drop(char_out)
+        char_out = self.char_embed(x_char)
+        char_out = self.char_embed_drop(char_out)
 
         tag_out = self.postag_embed(x_pos)
         tag_out = self.tag_embed_drop(tag_out)
 
-        #char_out_shape = char_out.shape
-        #char_out = char_out.view(char_out_shape[0], char_out_shape[1] * char_out_shape[2], char_out_shape[3])
-        #char_out = self.conv_char(char_out.permute(0, 2, 1))
-        #char_out = char_out.view(char_out_shape[0], char_out_shape[1], -1)
+        char_out_shape = char_out.size()
+        char_out = char_out.view(-1, char_out_shape[-2], char_out_shape[-1]) # n*seq len, char len, char embed size
+        char_out = char_out.permute(0, 2, 1) #Reshaped to fit to CNN
+        char_out = self.cnn_seq(char_out)
+        char_out = char_out.permute(0, 2, 1) # Bring it back to same shape
+        char_out = char_out.contiguous().view(batch_size, sentence_len, -1) # Reshape to original shape plus flatten
 
         #concat = torch.cat((word_out, char_out, tag_out), dim=2)
-        concat = torch.cat((word_out, tag_out), dim=2)
+        concat = torch.cat((word_out, tag_out, char_out), dim=2)
 
         # NER LSTM
         ner_lstm_out, _ = self.lstm_ner(concat)
@@ -346,16 +351,17 @@ class ClassificationModelUtils:
             with torch.no_grad():
 
                 data_test['x_padded'] = data_test['x_padded'].to(self.device)
-                #data_test['x_char_padded'] = data_test['x_char_padded'].to(self.device)
+                data_test['x_char_padded'] = data_test['x_char_padded'].to(self.device)
                 data_test['x_postag_padded'] = data_test['x_postag_padded'].to(self.device)
                 data_test['y_ner_padded'] = data_test['y_ner_padded'].to(self.device)
 
                 mask = torch.where(data_test['x_padded'] > 0, torch.Tensor([1]).type(torch.uint8).to(device),
                                    torch.Tensor([0]).type(torch.uint8).to(device))
 
-                test_ner_out, test_crf_out, test_loss = self.model(data_test['x_padded'], data_test['x_postag_padded'], mask, data_test['y_ner_padded']) #, data_test['x_char_padded'],
-                                                           #data_test['x_postag_padded'])
-
+                test_ner_out, test_crf_out, test_loss = self.model(data_test['x_padded'],
+                                                                   data_test['x_postag_padded'],
+                                                                   data_test['x_char_padded'],
+                                                                   mask, data_test['y_ner_padded'])
                 # Loss
                 #test_loss = self.criterion_crossentropy(test_ner_out.transpose(2, 1), data_test['y_ner_padded'])
                 test_losses.append(test_loss.item())
@@ -407,18 +413,19 @@ class ClassificationModelUtils:
                 self.optimizer.zero_grad()
                 self.crf_weights.append(self.model.crf.state_dict()['transitions'].to('cpu').numpy())
                 data['x_padded'] = data['x_padded'].to(self.device)
-                #data['x_char_padded'] = data['x_char_padded'].to(self.device)
+                data['x_char_padded'] = data['x_char_padded'].to(self.device)
                 data['x_postag_padded'] = data['x_postag_padded'].to(self.device)
                 data['y_ner_padded'] = data['y_ner_padded'].to(self.device)
 
                 mask = torch.where(data['x_padded'] > 0, torch.Tensor([1]).type(torch.uint8).to(device),
                                    torch.Tensor([0]).type(torch.uint8).to(device))
 
-                ner_out, crf_out, loss = self.model(data['x_padded'], data['x_postag_padded'], mask, data['y_ner_padded'])
-                                     #data['x_char_padded'],
-                                     #data['x_postag_padded'])
-
-
+                ner_out, crf_out, loss = self.model(data['x_padded'],
+                                                    data['x_postag_padded'],
+                                                    data['x_char_padded'],
+                                                    mask,
+                                                    data['y_ner_padded']
+                                                    )
 
                 # Loss
                 #loss = self.criterion_crossentropy(ner_out.transpose(2, 1), data['y_ner_padded'])
@@ -474,11 +481,11 @@ def git_commit_push(commit_message, add=True, push=False):
     return subprocess.getoutput('git log --format="%H" -n 1')
 
 if __name__ == "__main__":
-    COMMENT = "THE BEST MODEL"
-    EPOCHS = 13
+    COMMENT = "Added char cnn layer"
+    EPOCHS = 50
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized
-    LEARNING_RATE = 0.0001 #Finalized
+    LEARNING_RATE = 0.001 #Finalized
     TEST_SPLIT = 0.3 #Finalized
     WORD_EMBED_DIM = 512 #Finalized
     POSTAG_EMBED_DIM = 256
@@ -526,7 +533,7 @@ if __name__ == "__main__":
         x_encoder, x_padded_train, x_padded_test = tokenize_sentence(X_text_list_train, X_text_list_test, MAX_SENTENCE_LEN)
 
         # Tokenize Characters
-        #x_char_encoder, x_char_padded_train, x_char_padded_test = tokenize_character(X_text_list_train, x_padded_train, x_padded_test, x_encoder)
+        x_char_encoder, x_char_padded_train, x_char_padded_test = tokenize_character(X_text_list_train, x_padded_train, x_padded_test, x_encoder)
 
         # Tokenize Pos tags
         x_postag_encoder, x_postag_padded_train, x_postag_padded_test = tokenize_pos_tags(X_tags_train, X_tags_test)
@@ -537,7 +544,7 @@ if __name__ == "__main__":
 
         #Create train dataloader
         dataset_train = Dataset([{'x_padded': x_padded_train[i],
-                                  #'x_char_padded': x_char_padded_train[i],
+                                  'x_char_padded': x_char_padded_train[i],
                                   'x_postag_padded': x_postag_padded_train[i],
                                   'y_ner_padded': y_ner_padded_train[i],
                                   } for i in range(x_padded_train.shape[0])])
@@ -547,7 +554,7 @@ if __name__ == "__main__":
 
         # Create test dataloader
         dataset_test = Dataset([{'x_padded': x_padded_test[i],
-                                 #'x_char_padded': x_char_padded_test[i],
+                                 'x_char_padded': x_char_padded_test[i],
                                  'x_postag_padded': x_postag_padded_test[i],
                                  'y_ner_padded': y_ner_padded_test[i],
                                  } for i in range(x_padded_test.shape[0])])

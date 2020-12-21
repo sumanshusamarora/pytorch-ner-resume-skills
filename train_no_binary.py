@@ -471,7 +471,7 @@ def git_commit_push(commit_message, add=True, push=False):
     if push:
         subprocess.run(['git', 'push'])
 
-    return subprocess.getoutput(["git", "log", '--format="%H"', "-n", "1"])
+    return subprocess.getoutput('git log --format="%H" -n 1')
 
 commit_id = git_commit_push(commit_message="Comparing issues after adding CNN")
 

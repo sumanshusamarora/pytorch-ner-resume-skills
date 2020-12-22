@@ -183,14 +183,14 @@ class EntityExtraction(nn.Module):
         self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
 
         # CNN for character input
-        self.cnn_seq = nn.Sequential(
-                                    nn.Conv1d(in_channels=self.char_embed_dim, out_channels=self.cnn_out_channels, kernel_size=3, padding=1),
-                                    nn.ReLU(),
-                                    nn.MaxPool1d(kernel_size=106)
-                                    )
-
+        self.char_rnn = nn.LSTM(input_size=self.char_embed_dim,
+                                hidden_size=self.rnn_hidden_size,
+                                num_layers=1,
+                                batch_first=True,
+                                dropout=self.dropout_ratio,
+                                bidirectional=self.rnn_bidirectional)
         # LSTM for concatenated input
-        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim+self.tag_embed_dim+self.cnn_out_channels,
+        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim+self.tag_embed_dim+self.rnn_hidden_size,
                                 hidden_size=self.rnn_hidden_size,
                                 num_layers=self.rnn_stack_size,
                                 batch_first=True,
@@ -223,9 +223,10 @@ class EntityExtraction(nn.Module):
         tag_out = self.tag_embed_drop(tag_out)
 
         char_out_shape = char_out.size()
+        import pdb; pdb.set_trace()
         char_out = char_out.view(-1, char_out_shape[-2], char_out_shape[-1]) # n*seq len, char len, char embed size
-        char_out = char_out.permute(0, 2, 1) #Reshaped to fit to CNN
-        char_out = self.cnn_seq(char_out)
+        char_out, _ = self.char_rnn(char_out)
+        char_out = char_out[:,-1,:]
         char_out = char_out.squeeze(-1)
         char_out = char_out.contiguous().view(batch_size, sentence_len, char_out.size(-1)) # Reshape to original shape plus flatten
 
@@ -488,7 +489,7 @@ def git_commit_push(commit_message, add=True, push=False):
     return subprocess.getoutput('git log --format="%H" -n 1')
 
 if __name__ == "__main__":
-    COMMENT = "CNN max pool on whole embedding dim to return single value for each output channel"
+    COMMENT = "CNN replaced with RNN"
     EPOCHS = 20
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized

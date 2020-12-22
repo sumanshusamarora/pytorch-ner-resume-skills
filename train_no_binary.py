@@ -489,7 +489,7 @@ def git_commit_push(commit_message, add=True, push=False):
 
 if __name__ == "__main__":
     COMMENT = "CNN max pool on whole embedding dim to return single value for each output channel"
-    EPOCHS = 25
+    EPOCHS = 20
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized
     RNN_HIDDEN_SIZE = 256

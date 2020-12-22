@@ -152,7 +152,7 @@ def calculate_sample_weights(y_ner_padded_train):
 #Build Model
 class EntityExtraction(nn.Module):
 
-    def __init__(self, num_classes, rnn_hidden_size=512, rnn_stack_size=2, rnn_bidirectional=True, word_embed_dim=256,
+    def __init__(self, num_classes, rnn_hidden_size=1024, rnn_stack_size=2, rnn_bidirectional=True, word_embed_dim=256,
                  tag_embed_dim=256, char_embed_dim=256, cnn_out_channels=256, rnn_embed_dim=512,
                  char_embedding=True, dropout_ratio=0.3, class_weights=None):
         super().__init__()
@@ -260,7 +260,7 @@ class EntityExtraction(nn.Module):
 
 
 class ClassificationModelUtils:
-    def __init__(self, dataloader_train, dataloader_test, ner_class_weights, num_classes, cuda=True, dropout=0.3, rnn_stack_size=2, learning_rate=0.001, word_embed_dim=256):
+    def __init__(self, dataloader_train, dataloader_test, ner_class_weights, num_classes, rnn_hidden_size=512, cuda=True, dropout=0.3, rnn_stack_size=2, learning_rate=0.001, word_embed_dim=256):
         if cuda:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             torch.cuda.empty_cache()
@@ -275,7 +275,7 @@ class ClassificationModelUtils:
         self.ner_class_weights = ner_class_weights
         self.num_classes = num_classes
 
-        self.model = EntityExtraction(num_classes=NUM_CLASSES, dropout_ratio=dropout, rnn_stack_size=rnn_stack_size,
+        self.model = EntityExtraction(num_classes=NUM_CLASSES, dropout_ratio=dropout, rnn_hidden_size=rnn_hidden_size, rnn_stack_size=rnn_stack_size,
                                       word_embed_dim=word_embed_dim, class_weights=self.ner_class_weights)
         self.model = self.model.to(self.device)
         self.criterion_crossentropy = nn.CrossEntropyLoss(weight=torch.FloatTensor(self.ner_class_weights).to(device))
@@ -492,6 +492,7 @@ if __name__ == "__main__":
     EPOCHS = 25
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized
+    RNN_HIDDEN_SIZE = 1024
     LEARNING_RATE = 0.001 #Finalized
     TEST_SPLIT = 0.3 #Finalized
     WORD_EMBED_DIM = 512 #Finalized
@@ -513,6 +514,7 @@ if __name__ == "__main__":
         mlflow.log_param("TEST_SPLIT", TEST_SPLIT)
         mlflow.log_param("WORD_EMBED_DIM", WORD_EMBED_DIM)
         mlflow.log_param("POSTAG_EMBED_DIM", POSTAG_EMBED_DIM)
+        mlflow.log_param("RNN_HIDDEN_SIZE", RNN_HIDDEN_SIZE)
         commit_id = git_commit_push(commit_message=COMMENT, add=True, push=False)
         mlflow.log_param("COMMIT ID", commit_id)
         # Load Data
@@ -593,6 +595,7 @@ if __name__ == "__main__":
         model_utils = ClassificationModelUtils(dataloader_train,
                                                dataloader_test,
                                                ner_class_weights,
+                                               rnn_hidden_size=RNN_HIDDEN_SIZE,
                                                learning_rate=LEARNING_RATE,
                                                num_classes=NUM_CLASSES,
                                                cuda=GPU,

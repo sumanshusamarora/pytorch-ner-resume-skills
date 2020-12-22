@@ -189,7 +189,7 @@ class EntityExtraction(nn.Module):
                                 num_layers=1,
                                 batch_first=True,
                                 dropout=self.dropout_ratio,
-                                bidirectional=self.rnn_bidirectional)
+                                bidirectional=False)
         # LSTM for concatenated input
         self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim+self.tag_embed_dim+self.char_rnn_hidden_size,
                                 hidden_size=self.rnn_hidden_size,

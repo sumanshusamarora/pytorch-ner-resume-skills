@@ -152,7 +152,7 @@ def calculate_sample_weights(y_ner_padded_train):
 #Build Model
 class EntityExtraction(nn.Module):
 
-    def __init__(self, num_classes, rnn_hidden_size=1024, rnn_stack_size=2, rnn_bidirectional=True, word_embed_dim=256,
+    def __init__(self, num_classes, rnn_hidden_size=512, rnn_stack_size=2, rnn_bidirectional=True, word_embed_dim=256,
                  tag_embed_dim=256, char_embed_dim=256, cnn_out_channels=256, rnn_embed_dim=512,
                  char_embedding=True, dropout_ratio=0.3, class_weights=None):
         super().__init__()
@@ -164,6 +164,7 @@ class EntityExtraction(nn.Module):
         self.rnn_embed_dim = rnn_embed_dim
         self.dropout_ratio = dropout_ratio
         self.rnn_hidden_size = rnn_hidden_size
+        self.char_rnn_hidden_size = int(rnn_hidden_size/2)
         self.rnn_stack_size = rnn_stack_size
         self.rnn_bidirectional = rnn_bidirectional
         self.cnn_out_channels = cnn_out_channels
@@ -184,13 +185,13 @@ class EntityExtraction(nn.Module):
 
         # CNN for character input
         self.char_rnn = nn.LSTM(input_size=self.char_embed_dim,
-                                hidden_size=self.rnn_hidden_size,
+                                hidden_size=self.char_rnn_hidden_size,
                                 num_layers=1,
                                 batch_first=True,
                                 dropout=self.dropout_ratio,
                                 bidirectional=self.rnn_bidirectional)
         # LSTM for concatenated input
-        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim+self.tag_embed_dim+self.rnn_hidden_size,
+        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim+self.tag_embed_dim+self.char_rnn_hidden_size,
                                 hidden_size=self.rnn_hidden_size,
                                 num_layers=self.rnn_stack_size,
                                 batch_first=True,
@@ -493,11 +494,11 @@ if __name__ == "__main__":
     EPOCHS = 20
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized
-    RNN_HIDDEN_SIZE = 256
+    RNN_HIDDEN_SIZE = 512
     LEARNING_RATE = 0.001 #Finalized
     TEST_SPLIT = 0.3 #Finalized
-    WORD_EMBED_DIM = 512 #Finalized
-    POSTAG_EMBED_DIM = 256
+    WORD_EMBED_DIM = 128 #Finalized
+    POSTAG_EMBED_DIM = 128
     GPU = True
     mlflow.set_experiment("PytorchDualLoss")
     with mlflow.start_run() as run:

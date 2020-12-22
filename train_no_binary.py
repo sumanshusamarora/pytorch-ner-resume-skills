@@ -492,7 +492,7 @@ if __name__ == "__main__":
     EPOCHS = 25
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2 #Finalized
-    RNN_HIDDEN_SIZE = 1024
+    RNN_HIDDEN_SIZE = 256
     LEARNING_RATE = 0.001 #Finalized
     TEST_SPLIT = 0.3 #Finalized
     WORD_EMBED_DIM = 512 #Finalized

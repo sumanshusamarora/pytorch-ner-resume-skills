@@ -505,7 +505,7 @@ if __name__ == "__main__":
                          "Outputs": "NER Only",
                          "Loss": "CRF with mask",
                          })
-        mlflow.log_param("CUDA", GPU)
+        mlflow.log_param("CUDA", f"{GPU}-{device}")
         mlflow.log_param("COMMENT", COMMENT)
         mlflow.log_param("EPOCHS", EPOCHS)
         mlflow.log_param("DROPOUT", DROPOUT)

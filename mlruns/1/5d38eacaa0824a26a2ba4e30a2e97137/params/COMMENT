@@ -1,0 +1,1 @@
+CNN max pool on whole embedding dim to return single value for each output channel

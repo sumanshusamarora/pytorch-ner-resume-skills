@@ -227,9 +227,10 @@ class EntityExtraction(nn.Module):
         char_out_shape = char_out.size()
         char_out = char_out.view(-1, char_out_shape[-2], char_out_shape[-1]) # n*seq len, char len, char embed size
         char_lstm_out_exists = False
-        import pdb;
-        pdb.set_trace()
+
         for ii in range(0, char_out.size(0), self.how_many):
+            import pdb;
+            pdb.set_trace()
             _out, _ = self.char_rnn(char_out[ii:ii+self.how_many])
             if char_lstm_out_exists:
                 char_lstm_out = torch.cat((char_lstm_out, _out))

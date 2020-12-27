@@ -182,7 +182,7 @@ class EntityExtraction(nn.Module):
         self.postag_embed = nn.Embedding(num_embeddings=x_postag_encoder.vocab_size,
                                          embedding_dim=self.tag_embed_dim)
         self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
-        self.how_many = 4096
+        self.how_many = 2048
 
         # CNN for character input
         self.char_rnn = nn.LSTM(input_size=self.char_embed_dim,

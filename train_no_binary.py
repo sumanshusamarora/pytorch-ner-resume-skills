@@ -494,9 +494,9 @@ class ClassificationModelUtils:
 
 if __name__ == "__main__":
     COMMENT = "NEW WAY TO CLEAN AND PREPROCESS DATA"
-    EPOCHS = 100
+    EPOCHS = 50
     DROPOUT = 0.5
-    RNN_STACK_SIZE = 3  # Finalized
+    RNN_STACK_SIZE = 2  # Finalized
     LEARNING_RATE = 0.001  # Finalized
     TEST_SPLIT = 0.25  # Finalized
     WORD_EMBED_DIM = 512  # Finalized

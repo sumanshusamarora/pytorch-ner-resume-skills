@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import re
 import json
+import pickle
 
 dataset = pd.read_json("data/Entity Recognition in Resumes.json", lines=True)
 cv_text = np.array(dataset.content)
@@ -73,26 +74,28 @@ for df_index in range(len(dataset)):
                 extra_text = clean_text(this_df_content[prev_end+1:start])
 
             prev_end = end
-            text_list = [txt for txt in extra_text.split(' ') if txt.strip() != ""]
+            text_list = [txt.replace("\n",'') for txt in extra_text.split(' ') if txt.strip() != "" and txt.strip() != "" and len(txt.strip()) > 1]
             final_text_list += text_list
             final_out_list += ["O"] * len(text_list)
 
-            text_list = [txt for txt in clean_text(text).split(' ') if txt.strip() != ""]
+            text_list = [txt.replace("\n",'') for txt in clean_text(text).split(' ') if txt.strip() != "" and txt.strip() != "" and len(txt.strip()) > 1]
             final_text_list += text_list
             final_out_list += [label.upper()+'-B']+([label.upper()+'-I']*(len(text_list)-1))
 
             if is_last:
                 extra_text = clean_text(this_df_content[end + 1:])
-                text_list = [txt for txt in extra_text.split(' ') if txt.strip() != ""]
+                text_list = [txt.replace("\n",'') for txt in extra_text.split(' ') if txt.strip() != "" and txt.strip() != "" and len(txt.strip()) > 1]
                 final_text_list += text_list
                 final_out_list += ["O"] * len(text_list)
 
     data_annotated.append(tuple(zip(final_text_list, final_out_list)))
 
-import pickle
 with open('data/data_ready_list.pkl', 'wb') as out_file:
     pickle.dump(data_annotated, out_file)
 
+
+
+#Ignore below code
 for i in range(len(dataset)):
     dataset_reformatted.loc[k, "documentNum"] = i + 1
     dataset_reformatted.loc[k, "documentText"] = dataset.content[i]

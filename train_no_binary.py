@@ -236,7 +236,7 @@ class EntityExtraction(nn.Module):
 
         # concat = torch.cat((word_out, char_out, tag_out), dim=2)
         concat = torch.cat((word_out, tag_out, char_out), dim=2)
-
+        import pdb; pdb.set_trace()
         # NER LSTM
         ner_lstm_out, _ = self.lstm_ner(concat)
         ner_lstm_out = self.lstm_ner_drop(ner_lstm_out)

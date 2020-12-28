@@ -494,11 +494,11 @@ class ClassificationModelUtils:
 
 if __name__ == "__main__":
     COMMENT = "NEW WAY TO CLEAN AND PREPROCESS DATA"
-    EPOCHS = 13
+    EPOCHS = 50
     DROPOUT = 0.5
     RNN_STACK_SIZE = 2  # Finalized
     LEARNING_RATE = 0.0001  # Finalized
-    TEST_SPLIT = 0.3  # Finalized
+    TEST_SPLIT = 0.2  # Finalized
     WORD_EMBED_DIM = 512  # Finalized
     POSTAG_EMBED_DIM = 256
     GPU = True
@@ -610,7 +610,8 @@ if __name__ == "__main__":
                                                num_classes=NUM_CLASSES,
                                                cuda=GPU,
                                                rnn_stack_size=RNN_STACK_SIZE,
-                                               word_embed_dim=WORD_EMBED_DIM)
+                                               word_embed_dim=WORD_EMBED_DIM,
+                                               learning_rate=LEARNING_RATE)
         model_utils.train(EPOCHS)
 
         mlflow.pytorch.log_model(model_utils.model, 'ner_model')
@@ -629,6 +630,5 @@ if __name__ == "__main__":
 
         mlflow.log_metric("F1-Test", model_utils.test_epoch_ner_f1s[-1])
         mlflow.log_metric("F1-Train", model_utils.epoch_ner_f1s[-1])
-
 
         model_utils.plot_graphs()

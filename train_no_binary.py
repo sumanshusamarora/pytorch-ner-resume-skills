@@ -184,9 +184,9 @@ class EntityExtraction(nn.Module):
                                        embedding_dim=self.word_embed_dim)
         self.word_embed_drop = nn.Dropout(self.dropout_ratio)
 
-        # self.char_embed = nn.Embedding(num_embeddings=x_char_encoder.vocab_size,
-        #                               embedding_dim=self.char_embed_dim)
-        # self.char_embed_drop = nn.Dropout(self.dropout_ratio)
+        self.char_embed = nn.Embedding(num_embeddings=x_char_encoder.vocab_size,
+                                      embedding_dim=self.char_embed_dim)
+        self.char_embed_drop = nn.Dropout(self.dropout_ratio)
 
         self.postag_embed = nn.Embedding(num_embeddings=x_postag_encoder.vocab_size,
                                          embedding_dim=self.tag_embed_dim)

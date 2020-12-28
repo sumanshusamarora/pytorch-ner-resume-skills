@@ -1,5 +1,5 @@
 artifact_uri: file:///home/sam/work/research/ner-domain-specific/mlruns/1/899d9d60f0e24967a9c8dd96b1751f1d/artifacts
-end_time: null
+end_time: 1609170200897
 entry_point_name: ''
 experiment_id: '1'
 lifecycle_stage: active
@@ -10,6 +10,6 @@ source_name: ''
 source_type: 4
 source_version: ''
 start_time: 1609166209180
-status: 1
+status: 3
 tags: []
 user_id: sam

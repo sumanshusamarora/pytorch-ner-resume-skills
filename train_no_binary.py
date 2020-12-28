@@ -182,7 +182,6 @@ class EntityExtraction(nn.Module):
         self.postag_embed = nn.Embedding(num_embeddings=x_postag_encoder.vocab_size,
                                          embedding_dim=self.tag_embed_dim)
         self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
-        self.how_many = 2048
 
         # CNN for character input
         self.char_rnn = nn.LSTM(input_size=self.char_embed_dim,
@@ -225,20 +224,9 @@ class EntityExtraction(nn.Module):
         tag_out = self.tag_embed_drop(tag_out)
 
         char_out_shape = char_out.size()
+        import pdb; pdb.set_trace()
         char_out = char_out.view(-1, char_out_shape[-2], char_out_shape[-1]) # n*seq len, char len, char embed size
-        char_lstm_out_exists = False
-
-        for ii in range(0, char_out.size(0), self.how_many):
-            import pdb;
-            pdb.set_trace()
-            _out, _ = self.char_rnn(char_out[ii:ii+self.how_many])
-            if char_lstm_out_exists:
-                char_lstm_out = torch.cat((char_lstm_out, _out))
-            else:
-                char_lstm_out = _out
-                char_lstm_out_exists = True
-
-        #char_out, _ = self.char_rnn(char_out)
+        char_out, _ = self.char_rnn(char_out)
         char_out = char_out[:,-1,:]
         char_out = char_out.squeeze(-1)
         char_out = char_out.contiguous().view(batch_size, sentence_len, char_out.size(-1)) # Reshape to original shape plus flatten

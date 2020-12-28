@@ -223,13 +223,13 @@ class EntityExtraction(nn.Module):
         tag_out = self.tag_embed_drop(tag_out)
 
         char_out = self.char_embed(x_char)
-        char_out = self.char_embed_drop(char_out)
-        import pdb; pdb.set_trace()
-        char_out = char_out.view(char_out.size(0)*char_out.size(1), char_out.size(2), char_out.size(3))
-        char_out = char_out.permute(0, 2, 1)
-        char_out = self.char_cnn(char_out)
+        char_out = self.char_embed_drop(char_out) #Shape - N, Max Sen Len, Max Char Len, Embedding dim
+        char_out = char_out.view(char_out.size(0)*char_out.size(1), char_out.size(2), char_out.size(3)) #Shape - N*Max Sen Len, Max Char Len, Embedding dim
+        char_out = char_out.permute(0, 2, 1) #Shape - N*Max Sen Len, Embedding dim, Max Char Len
+        char_out = self.char_cnn(char_out) #Shape - N*Max Sen Len, CNN out dim, Max Char Len
         char_out_shape = char_out.shape
-        char_out = F.max_pool1d(char_out, kernel_size=char_out_shape[-1]).squeeze(-1)
+        char_out = F.max_pool1d(char_out, kernel_size=char_out_shape[-1]).squeeze(-1) #Shape - N*Max Sen Len, Max Char Len
+        char_out = char_out.view(batch_size, -1, char_out.size(-1)) #Shape - N, Max Sen Len, Max Char Len
 
         # concat = torch.cat((word_out, char_out, tag_out), dim=2)
         concat = torch.cat((word_out, tag_out, char_out), dim=2)

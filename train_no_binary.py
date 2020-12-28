@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import precision_score, accuracy_score, recall_score, f1_score, classification_report
 from sklearn.utils.class_weight import compute_class_weight
 import torch
+import torch.nn.functional as F
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
@@ -15,6 +16,7 @@ import random
 import pickle
 import mlflow.pytorch
 import subprocess
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -191,8 +193,7 @@ class EntityExtraction(nn.Module):
         self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
 
         # CNN for character input
-        # self.conv_char = nn.Conv1d(in_channels=self.char_embed_dim, out_channels=52, kernel_size=3, padding=1)
-        # self.maxpool_char = nn.MaxPool1d(kernel_size=3)
+        self.char_cnn = nn.Conv1d(in_channels=self.char_embed_dim, out_channels=32, kernel_size=5)
 
         # LSTM for concatenated input
         self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim + self.tag_embed_dim,
@@ -211,26 +212,27 @@ class EntityExtraction(nn.Module):
         self.linear_ner = nn.Linear(in_features=128, out_features=self.NUM_CLASSES + 1)  # +1 for padding 0
         self.crf = CRF(self.NUM_CLASSES + 1, batch_first=True)
 
-    def forward(self, x_word, x_pos, mask, y_word=None, train=True):
-        # x_char_shape = x_char.shape
-        # batch_size = x_char_shape[0]
+    def forward(self, x_word, x_pos, x_char, mask, y_word=None, train=True):
+        x_char_shape = x_char.shape
+        batch_size = x_char_shape[0]
 
         word_out = self.word_embed(x_word)
         word_out = self.word_embed_drop(word_out)
 
-        # char_out = self.char_embed(x_char)
-        # char_out = self.char_embed_drop(char_out)
-
         tag_out = self.postag_embed(x_pos)
         tag_out = self.tag_embed_drop(tag_out)
 
-        # char_out_shape = char_out.shape
-        # char_out = char_out.view(char_out_shape[0], char_out_shape[1] * char_out_shape[2], char_out_shape[3])
-        # char_out = self.conv_char(char_out.permute(0, 2, 1))
-        # char_out = char_out.view(char_out_shape[0], char_out_shape[1], -1)
+        char_out = self.char_embed(x_char)
+        char_out = self.char_embed_drop(char_out)
+        import pdb; pdb.set_trace()
+        char_out = char_out.view(char_out.size(0)*char_out.size(1), char_out.size(2), char_out.size(3))
+        char_out = char_out.permute(0, 2, 1)
+        char_out = self.char_cnn(char_out)
+        char_out_shape = char_out.shape
+        char_out = F.max_pool1d(char_out, kernel_size=char_out_shape[-1]).squeeze(-1)
 
         # concat = torch.cat((word_out, char_out, tag_out), dim=2)
-        concat = torch.cat((word_out, tag_out), dim=2)
+        concat = torch.cat((word_out, tag_out, char_out), dim=2)
 
         # NER LSTM
         ner_lstm_out, _ = self.lstm_ner(concat)
@@ -372,18 +374,18 @@ class ClassificationModelUtils:
         for k, data_test in enumerate(self.dataloader_test):
             with torch.no_grad():
                 data_test['x_padded'] = data_test['x_padded'].to(self.device)
-                # data_test['x_char_padded'] = data_test['x_char_padded'].to(self.device)
+                data_test['x_char_padded'] = data_test['x_char_padded'].to(self.device)
                 data_test['x_postag_padded'] = data_test['x_postag_padded'].to(self.device)
                 data_test['y_ner_padded'] = data_test['y_ner_padded'].to(self.device)
 
                 mask = torch.where(data_test['x_padded'] > 0, torch.Tensor([1]).type(torch.uint8).to(device),
                                    torch.Tensor([0]).type(torch.uint8).to(device))
 
-                test_ner_out, test_crf_out, test_loss = self.model(data_test['x_padded'], data_test['x_postag_padded'],
-                                                                   mask, data_test[
-                                                                       'y_ner_padded'])  # , data_test['x_char_padded'],
-                # data_test['x_postag_padded'])
-
+                test_ner_out, test_crf_out, test_loss = self.model(data_test['x_padded'],
+                                                                   data_test['x_postag_padded'],
+                                                                   data_test['x_char_padded'],
+                                                                   mask,
+                                                                   data_test['y_ner_padded'])
                 # Loss
                 # test_loss = self.criterion_crossentropy(test_ner_out.transpose(2, 1), data_test['y_ner_padded'])
                 test_losses.append(test_loss.item())
@@ -436,17 +438,18 @@ class ClassificationModelUtils:
                 self.optimizer.zero_grad()
                 self.crf_weights.append(self.model.crf.state_dict()['transitions'].to('cpu').numpy())
                 data['x_padded'] = data['x_padded'].to(self.device)
-                # data['x_char_padded'] = data['x_char_padded'].to(self.device)
+                data['x_char_padded'] = data['x_char_padded'].to(self.device)
                 data['x_postag_padded'] = data['x_postag_padded'].to(self.device)
                 data['y_ner_padded'] = data['y_ner_padded'].to(self.device)
 
                 mask = torch.where(data['x_padded'] > 0, torch.Tensor([1]).type(torch.uint8).to(device),
                                    torch.Tensor([0]).type(torch.uint8).to(device))
 
-                ner_out, crf_out, loss = self.model(data['x_padded'], data['x_postag_padded'], mask,
+                ner_out, crf_out, loss = self.model(data['x_padded'],
+                                                    data['x_postag_padded'],
+                                                    data['x_char_padded'],
+                                                    mask,
                                                     data['y_ner_padded'])
-                # data['x_char_padded'],
-                # data['x_postag_padded'])
 
                 # Loss
                 # loss = self.criterion_crossentropy(ner_out.transpose(2, 1), data['y_ner_padded'])
@@ -489,14 +492,14 @@ class ClassificationModelUtils:
 
             self.validate()
             print(classification_report(self.test_epoch_truth_all, self.test_epoch_prediction_all))
-            # self.plot_graphs()
+            #self.plot_graphs()
 
 
 if __name__ == "__main__":
-    COMMENT = "NEW WAY TO CLEAN AND PREPROCESS DATA"
+    COMMENT = "ADD CHAR CNN ON TOP"
     EPOCHS = 100
     DROPOUT = 0.5
-    RNN_STACK_SIZE = 4  # Finalized
+    RNN_STACK_SIZE = 3  # Finalized
     LEARNING_RATE = 0.0001  # Finalized
     TEST_SPLIT = 0.25  # Finalized
     WORD_EMBED_DIM = 512  # Finalized
@@ -557,7 +560,7 @@ if __name__ == "__main__":
                                                                      MAX_SENTENCE_LEN)
 
         # Tokenize Characters
-        # x_char_encoder, x_char_padded_train, x_char_padded_test = tokenize_character(X_text_list_train, x_padded_train, x_padded_test, x_encoder)
+        x_char_encoder, x_char_padded_train, x_char_padded_test = tokenize_character(X_text_list_train, x_padded_train, x_padded_test, x_encoder)
 
         # Tokenize Pos tags
         x_postag_encoder, x_postag_padded_train, x_postag_padded_test = tokenize_pos_tags(X_tags_train, X_tags_test)
@@ -568,7 +571,7 @@ if __name__ == "__main__":
 
         # Create train dataloader
         dataset_train = Dataset([{'x_padded': x_padded_train[i],
-                                  # 'x_char_padded': x_char_padded_train[i],
+                                  'x_char_padded': x_char_padded_train[i],
                                   'x_postag_padded': x_postag_padded_train[i],
                                   'y_ner_padded': y_ner_padded_train[i],
                                   } for i in range(x_padded_train.shape[0])])
@@ -577,7 +580,7 @@ if __name__ == "__main__":
 
         # Create test dataloader
         dataset_test = Dataset([{'x_padded': x_padded_test[i],
-                                 # 'x_char_padded': x_char_padded_test[i],
+                                 'x_char_padded': x_char_padded_test[i],
                                  'x_postag_padded': x_postag_padded_test[i],
                                  'y_ner_padded': y_ner_padded_test[i],
                                  } for i in range(x_padded_test.shape[0])])
@@ -585,21 +588,24 @@ if __name__ == "__main__":
         dataloader_test = DataLoader(dataset=dataset_test, batch_size=BATCH_SIZE, shuffle=False)
         """
         models = mlflow.pytorch.load_model(
-            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/c8c25fed508a486fb0c81e05ce32ae91/artifacts/ner_model')
+            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/899d9d60f0e24967a9c8dd96b1751f1d/artifacts/ner_model')
         for i, data in enumerate(dataloader_train):
             break
 
         k_list = [i for i, tens in enumerate(data['y_ner_padded']) if torch.unique(tens).shape[0]>2]
-        k = k_list[33]
+        k = k_list[1]
         mask = torch.where(data['x_padded'][k:k+1] > 0, torch.Tensor([1]).type(torch.uint8),
                                    torch.Tensor([0]).type(torch.uint8)).to(device)
-
 
         out, decoded, crf_loss = models(data['x_padded'][k:k+1].to(device), data['x_postag_padded'][k:k+1].to(device), mask, data['y_ner_padded'][k:k+1].to(device), train=False)
 
         result = [word for word in decoded[0]]
         truth = [word.item() for word in data['y_ner_padded'][k]]
-
+        
+        sentence = " ".join([x_encoder.index_to_token[ind] for ind in data['x_padded'][k:k+1][0]])
+        truth_y = " ".join([y_ner_encoder.index_to_token[word] for word in truth])
+        result_y = " ".join([y_ner_encoder.index_to_token[word] for word in result])
+        
         """
         # Build model
         ner_class_weights = calculate_sample_weights(y_ner_padded_train)

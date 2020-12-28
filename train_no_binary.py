@@ -493,142 +493,143 @@ class ClassificationModelUtils:
 
 
 if __name__ == "__main__":
-    COMMENT = "NEW WAY TO CLEAN AND PREPROCESS DATA"
-    EPOCHS = 50
-    DROPOUT = 0.5
-    RNN_STACK_SIZE = 2  # Finalized
-    LEARNING_RATE = 0.001  # Finalized
-    TEST_SPLIT = 0.25  # Finalized
-    WORD_EMBED_DIM = 512  # Finalized
-    POSTAG_EMBED_DIM = 256
-    GPU = True
-    BATCH_SIZE = 16
-    mlflow.set_experiment("PytorchDualLoss")
-    with mlflow.start_run() as run:
-        mlflow.set_tags({"Framework": "Pytorch",
-                         "Embeddings": "Word-POSTAG",
-                         "Outputs": "NER Only",
-                         "Loss": "CRF with mask",
-                         })
-        mlflow.log_param("CUDA", GPU)
-        mlflow.log_param("COMMENT", COMMENT)
-        mlflow.log_param("EPOCHS", EPOCHS)
-        mlflow.log_param("DROPOUT", DROPOUT)
-        mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)
-        mlflow.log_param("LEARNING_RATE", LEARNING_RATE)
-        mlflow.log_param("TEST_SPLIT", TEST_SPLIT)
-        mlflow.log_param("WORD_EMBED_DIM", WORD_EMBED_DIM)
-        mlflow.log_param("POSTAG_EMBED_DIM", POSTAG_EMBED_DIM)
-        mlflow.log_param("GPU_AVAILABLE", torch.cuda.is_available())
-        commit_id = git_commit_push(commit_message=COMMENT)
-        mlflow.log_param("COMMIT ID", commit_id)
-        # Load Data
-        X_text_list, y_ner_list = load_data()
+    for RNN_STACK_SIZE in [1,3]:
+        COMMENT = "NEW WAY TO CLEAN AND PREPROCESS DATA"
+        EPOCHS = 100
+        DROPOUT = 0.5
+        #RNN_STACK_SIZE = 2  # Finalized
+        LEARNING_RATE = 0.0001  # Finalized
+        TEST_SPLIT = 0.25  # Finalized
+        WORD_EMBED_DIM = 512  # Finalized
+        POSTAG_EMBED_DIM = 256
+        GPU = True
+        BATCH_SIZE = 16
+        mlflow.set_experiment("PytorchDualLoss")
+        with mlflow.start_run() as run:
+            mlflow.set_tags({"Framework": "Pytorch",
+                             "Embeddings": "Word-POSTAG",
+                             "Outputs": "NER Only",
+                             "Loss": "CRF with mask",
+                             })
+            mlflow.log_param("CUDA", GPU)
+            mlflow.log_param("COMMENT", COMMENT)
+            mlflow.log_param("EPOCHS", EPOCHS)
+            mlflow.log_param("DROPOUT", DROPOUT)
+            mlflow.log_param("RNN_STACK_SIZE", RNN_STACK_SIZE)
+            mlflow.log_param("LEARNING_RATE", LEARNING_RATE)
+            mlflow.log_param("TEST_SPLIT", TEST_SPLIT)
+            mlflow.log_param("WORD_EMBED_DIM", WORD_EMBED_DIM)
+            mlflow.log_param("POSTAG_EMBED_DIM", POSTAG_EMBED_DIM)
+            mlflow.log_param("GPU_AVAILABLE", torch.cuda.is_available())
+            commit_id = git_commit_push(commit_message=COMMENT)
+            mlflow.log_param("COMMIT ID", commit_id)
+            # Load Data
+            X_text_list, y_ner_list = load_data()
 
-        # Get POS tags
-        X_tags = get_POS_tags(X_text_list)
+            # Get POS tags
+            X_tags = get_POS_tags(X_text_list)
 
-        SENTENCE_LEN_LIST = [len(sentence) for sentence in X_text_list]
-        MAX_SENTENCE_LEN = 1200
-
-
-        X_text_list = trim_list_of_lists_upto_max_len(X_text_list, MAX_SENTENCE_LEN)
-        y_ner_list = trim_list_of_lists_upto_max_len(y_ner_list, MAX_SENTENCE_LEN)
-        X_tags = trim_list_of_lists_upto_max_len(X_tags, MAX_SENTENCE_LEN)
-        print(f"Max sentence len after trimming upto {MAX_SENTENCE_LEN} words is {max([len(sentence) for sentence in X_text_list])}")
-
-        # Split data in test and train plus return segregate as input lists
-        X_text_list_train, X_text_list_test, X_tags_train, X_tags_test, \
-        y_ner_list_train, y_ner_list_test = split_test_train(X_text_list, X_tags, y_ner_list, split_size=TEST_SPLIT)
-
-        # Set some important parameters values
-        ALL_LABELS = []
-        _ = [[ALL_LABELS.append(label) for label in lst] for lst in y_ner_list_train]
-        CLASS_COUNT_OUT = np.unique(ALL_LABELS, return_counts=True)
-        CLASS_COUNT_DICT = dict(zip(CLASS_COUNT_OUT[0], CLASS_COUNT_OUT[1]))
-        NUM_CLASSES = len([clas for clas in CLASS_COUNT_DICT.keys()])
-        print(F"Max sentence length - {MAX_SENTENCE_LEN}, Total Classes = {NUM_CLASSES}")
-
-        mlflow.log_param("MAX_SENTENCE_LEN", MAX_SENTENCE_LEN)
-        mlflow.log_param("NUM_CLASSES", NUM_CLASSES)
-
-        # Tokenize Sentences
-        x_encoder, x_padded_train, x_padded_test = tokenize_sentence(X_text_list_train, X_text_list_test,
-                                                                     MAX_SENTENCE_LEN)
-
-        # Tokenize Characters
-        # x_char_encoder, x_char_padded_train, x_char_padded_test = tokenize_character(X_text_list_train, x_padded_train, x_padded_test, x_encoder)
-
-        # Tokenize Pos tags
-        x_postag_encoder, x_postag_padded_train, x_postag_padded_test = tokenize_pos_tags(X_tags_train, X_tags_test)
-
-        # Encode y NER
-        y_ner_encoder, y_ner_padded_train, y_ner_padded_test = encode_ner_y(y_ner_list_train, y_ner_list_test,
-                                                                            CLASS_COUNT_DICT)
-
-        # Create train dataloader
-        dataset_train = Dataset([{'x_padded': x_padded_train[i],
-                                  # 'x_char_padded': x_char_padded_train[i],
-                                  'x_postag_padded': x_postag_padded_train[i],
-                                  'y_ner_padded': y_ner_padded_train[i],
-                                  } for i in range(x_padded_train.shape[0])])
-
-        dataloader_train = DataLoader(dataset=dataset_train, batch_size=BATCH_SIZE, shuffle=True)
-
-        # Create test dataloader
-        dataset_test = Dataset([{'x_padded': x_padded_test[i],
-                                 # 'x_char_padded': x_char_padded_test[i],
-                                 'x_postag_padded': x_postag_padded_test[i],
-                                 'y_ner_padded': y_ner_padded_test[i],
-                                 } for i in range(x_padded_test.shape[0])])
-
-        dataloader_test = DataLoader(dataset=dataset_test, batch_size=BATCH_SIZE, shuffle=False)
-        """
-        models = mlflow.pytorch.load_model(
-            'file:///home/sam/work/research/ner-domain-specific/mlruns/1/c8c25fed508a486fb0c81e05ce32ae91/artifacts/ner_model')
-        for i, data in enumerate(dataloader_train):
-            break
-
-        k_list = [i for i, tens in enumerate(data['y_ner_padded']) if torch.unique(tens).shape[0]>2]
-        k = k_list[33]
-        mask = torch.where(data['x_padded'][k:k+1] > 0, torch.Tensor([1]).type(torch.uint8),
-                                   torch.Tensor([0]).type(torch.uint8)).to(device)
+            SENTENCE_LEN_LIST = [len(sentence) for sentence in X_text_list]
+            MAX_SENTENCE_LEN = 1200
 
 
-        out, decoded, crf_loss = models(data['x_padded'][k:k+1].to(device), data['x_postag_padded'][k:k+1].to(device), mask, data['y_ner_padded'][k:k+1].to(device), train=False)
+            X_text_list = trim_list_of_lists_upto_max_len(X_text_list, MAX_SENTENCE_LEN)
+            y_ner_list = trim_list_of_lists_upto_max_len(y_ner_list, MAX_SENTENCE_LEN)
+            X_tags = trim_list_of_lists_upto_max_len(X_tags, MAX_SENTENCE_LEN)
+            print(f"Max sentence len after trimming upto {MAX_SENTENCE_LEN} words is {max([len(sentence) for sentence in X_text_list])}")
 
-        result = [word for word in decoded[0]]
-        truth = [word.item() for word in data['y_ner_padded'][k]]
+            # Split data in test and train plus return segregate as input lists
+            X_text_list_train, X_text_list_test, X_tags_train, X_tags_test, \
+            y_ner_list_train, y_ner_list_test = split_test_train(X_text_list, X_tags, y_ner_list, split_size=TEST_SPLIT)
 
-        """
-        # Build model
-        ner_class_weights = calculate_sample_weights(y_ner_padded_train)
+            # Set some important parameters values
+            ALL_LABELS = []
+            _ = [[ALL_LABELS.append(label) for label in lst] for lst in y_ner_list_train]
+            CLASS_COUNT_OUT = np.unique(ALL_LABELS, return_counts=True)
+            CLASS_COUNT_DICT = dict(zip(CLASS_COUNT_OUT[0], CLASS_COUNT_OUT[1]))
+            NUM_CLASSES = len([clas for clas in CLASS_COUNT_DICT.keys()])
+            print(F"Max sentence length - {MAX_SENTENCE_LEN}, Total Classes = {NUM_CLASSES}")
 
-        model_utils = ClassificationModelUtils(dataloader_train,
-                                               dataloader_test,
-                                               ner_class_weights,
-                                               num_classes=NUM_CLASSES,
-                                               cuda=GPU,
-                                               rnn_stack_size=RNN_STACK_SIZE,
-                                               word_embed_dim=WORD_EMBED_DIM,
-                                               learning_rate=LEARNING_RATE)
-        model_utils.train(EPOCHS)
+            mlflow.log_param("MAX_SENTENCE_LEN", MAX_SENTENCE_LEN)
+            mlflow.log_param("NUM_CLASSES", NUM_CLASSES)
 
-        mlflow.pytorch.log_model(model_utils.model, 'ner_model')
+            # Tokenize Sentences
+            x_encoder, x_padded_train, x_padded_test = tokenize_sentence(X_text_list_train, X_text_list_test,
+                                                                         MAX_SENTENCE_LEN)
 
-        mlflow.log_metric("Loss-Test", model_utils.test_epoch_loss[-1])
-        mlflow.log_metric("Loss-Train", model_utils.epoch_losses[-1])
+            # Tokenize Characters
+            # x_char_encoder, x_char_padded_train, x_char_padded_test = tokenize_character(X_text_list_train, x_padded_train, x_padded_test, x_encoder)
 
-        mlflow.log_metric("Accuracy-Test", model_utils.test_epoch_ner_accuracy[-1])
-        mlflow.log_metric("Accuracy-Train", model_utils.epoch_ner_accuracy[-1])
+            # Tokenize Pos tags
+            x_postag_encoder, x_postag_padded_train, x_postag_padded_test = tokenize_pos_tags(X_tags_train, X_tags_test)
 
-        mlflow.log_metric("Precision-Test", model_utils.test_epoch_ner_precision[-1])
-        mlflow.log_metric("Precision-Train", model_utils.epoch_ner_precision[-1])
+            # Encode y NER
+            y_ner_encoder, y_ner_padded_train, y_ner_padded_test = encode_ner_y(y_ner_list_train, y_ner_list_test,
+                                                                                CLASS_COUNT_DICT)
 
-        mlflow.log_metric("Recall-Test", model_utils.test_epoch_ner_recall[-1])
-        mlflow.log_metric("Recall-Train", model_utils.epoch_ner_recall[-1])
+            # Create train dataloader
+            dataset_train = Dataset([{'x_padded': x_padded_train[i],
+                                      # 'x_char_padded': x_char_padded_train[i],
+                                      'x_postag_padded': x_postag_padded_train[i],
+                                      'y_ner_padded': y_ner_padded_train[i],
+                                      } for i in range(x_padded_train.shape[0])])
 
-        mlflow.log_metric("F1-Test", model_utils.test_epoch_ner_f1s[-1])
-        mlflow.log_metric("F1-Train", model_utils.epoch_ner_f1s[-1])
+            dataloader_train = DataLoader(dataset=dataset_train, batch_size=BATCH_SIZE, shuffle=True)
 
-        model_utils.plot_graphs()
+            # Create test dataloader
+            dataset_test = Dataset([{'x_padded': x_padded_test[i],
+                                     # 'x_char_padded': x_char_padded_test[i],
+                                     'x_postag_padded': x_postag_padded_test[i],
+                                     'y_ner_padded': y_ner_padded_test[i],
+                                     } for i in range(x_padded_test.shape[0])])
+
+            dataloader_test = DataLoader(dataset=dataset_test, batch_size=BATCH_SIZE, shuffle=False)
+            """
+            models = mlflow.pytorch.load_model(
+                'file:///home/sam/work/research/ner-domain-specific/mlruns/1/c8c25fed508a486fb0c81e05ce32ae91/artifacts/ner_model')
+            for i, data in enumerate(dataloader_train):
+                break
+    
+            k_list = [i for i, tens in enumerate(data['y_ner_padded']) if torch.unique(tens).shape[0]>2]
+            k = k_list[33]
+            mask = torch.where(data['x_padded'][k:k+1] > 0, torch.Tensor([1]).type(torch.uint8),
+                                       torch.Tensor([0]).type(torch.uint8)).to(device)
+    
+    
+            out, decoded, crf_loss = models(data['x_padded'][k:k+1].to(device), data['x_postag_padded'][k:k+1].to(device), mask, data['y_ner_padded'][k:k+1].to(device), train=False)
+    
+            result = [word for word in decoded[0]]
+            truth = [word.item() for word in data['y_ner_padded'][k]]
+    
+            """
+            # Build model
+            ner_class_weights = calculate_sample_weights(y_ner_padded_train)
+
+            model_utils = ClassificationModelUtils(dataloader_train,
+                                                   dataloader_test,
+                                                   ner_class_weights,
+                                                   num_classes=NUM_CLASSES,
+                                                   cuda=GPU,
+                                                   rnn_stack_size=RNN_STACK_SIZE,
+                                                   word_embed_dim=WORD_EMBED_DIM,
+                                                   learning_rate=LEARNING_RATE)
+            model_utils.train(EPOCHS)
+
+            mlflow.pytorch.log_model(model_utils.model, 'ner_model')
+
+            mlflow.log_metric("Loss-Test", model_utils.test_epoch_loss[-1])
+            mlflow.log_metric("Loss-Train", model_utils.epoch_losses[-1])
+
+            mlflow.log_metric("Accuracy-Test", model_utils.test_epoch_ner_accuracy[-1])
+            mlflow.log_metric("Accuracy-Train", model_utils.epoch_ner_accuracy[-1])
+
+            mlflow.log_metric("Precision-Test", model_utils.test_epoch_ner_precision[-1])
+            mlflow.log_metric("Precision-Train", model_utils.epoch_ner_precision[-1])
+
+            mlflow.log_metric("Recall-Test", model_utils.test_epoch_ner_recall[-1])
+            mlflow.log_metric("Recall-Train", model_utils.epoch_ner_recall[-1])
+
+            mlflow.log_metric("F1-Test", model_utils.test_epoch_ner_f1s[-1])
+            mlflow.log_metric("F1-Train", model_utils.epoch_ner_f1s[-1])
+
+            #model_utils.plot_graphs()

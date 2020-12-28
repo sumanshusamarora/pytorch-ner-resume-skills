@@ -163,15 +163,18 @@ def calculate_sample_weights(y_ner_padded_train):
 # Build Model
 class EntityExtraction(nn.Module):
 
-    def __init__(self, num_classes, rnn_hidden_size=512, rnn_stack_size=2, rnn_bidirectional=True, word_embed_dim=256,
+    def __init__(self, num_classes, rnn_hidden_size=512, rnn_stack_size=2,
+                 rnn_bidirectional=True, word_embed_dim=256,
                  tag_embed_dim=256, char_embed_dim=124, rnn_embed_dim=512,
-                 char_embedding=True, dropout_ratio=0.3, class_weights=None):
+                 char_embedding=True, char_cnn_out_dim=32,
+                 dropout_ratio=0.3, class_weights=None):
         super().__init__()
         # self variables
         self.NUM_CLASSES = num_classes
         self.word_embed_dim = word_embed_dim
         self.tag_embed_dim = tag_embed_dim
         self.char_embed_dim = char_embed_dim
+        self.char_cnn_out_dim = char_cnn_out_dim
         self.rnn_embed_dim = rnn_embed_dim
         self.dropout_ratio = dropout_ratio
         self.rnn_hidden_size = rnn_hidden_size
@@ -193,10 +196,10 @@ class EntityExtraction(nn.Module):
         self.tag_embed_drop = nn.Dropout(self.dropout_ratio)
 
         # CNN for character input
-        self.char_cnn = nn.Conv1d(in_channels=self.char_embed_dim, out_channels=32, kernel_size=5)
+        self.char_cnn = nn.Conv1d(in_channels=self.char_embed_dim, out_channels=self.char_cnn_out_dim, kernel_size=5)
 
         # LSTM for concatenated input
-        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim + self.tag_embed_dim,
+        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim + self.tag_embed_dim+self.char_cnn_out_dim,
                                 hidden_size=self.rnn_hidden_size,
                                 num_layers=self.rnn_stack_size,
                                 batch_first=True,

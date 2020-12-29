@@ -199,7 +199,7 @@ class EntityExtraction(nn.Module):
         self.char_cnn = nn.Conv1d(in_channels=self.char_embed_dim, out_channels=self.char_cnn_out_dim, kernel_size=5)
 
         # LSTM for concatenated input
-        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim + self.tag_embed_dim+self.char_cnn_out_dim,
+        self.lstm_ner = nn.LSTM(input_size=self.word_embed_dim + self.tag_embed_dim,#+self.char_cnn_out_dim,
                                 hidden_size=self.rnn_hidden_size,
                                 num_layers=self.rnn_stack_size,
                                 batch_first=True,
@@ -235,7 +235,7 @@ class EntityExtraction(nn.Module):
         char_out = char_out.view(batch_size, -1, char_out.size(-1)) #Shape - N, Max Sen Len, Max Char Len
 
         # concat = torch.cat((word_out, char_out, tag_out), dim=2)
-        concat = torch.cat((word_out, tag_out, char_out), dim=2)
+        concat = torch.cat((word_out, tag_out), dim=2)
         import pdb; pdb.set_trace()
         # NER LSTM
         ner_lstm_out, _ = self.lstm_ner(concat)

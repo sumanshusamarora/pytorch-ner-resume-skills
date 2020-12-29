@@ -225,21 +225,21 @@ class EntityExtraction(nn.Module):
         tag_out = self.postag_embed(x_pos)
         tag_out = self.tag_embed_drop(tag_out)
 
-        char_out = self.char_embed(x_char)
-        char_out = self.char_embed_drop(char_out) #Shape - N, Max Sen Len, Max Char Len, Embedding dim
-        char_out = char_out.view(char_out.size(0)*char_out.size(1), char_out.size(2), char_out.size(3)) #Shape - N*Max Sen Len, Max Char Len, Embedding dim
-        char_out = char_out.permute(0, 2, 1) #Shape - N*Max Sen Len, Embedding dim, Max Char Len
-        char_out = self.char_cnn(char_out) #Shape - N*Max Sen Len, CNN out dim, Max Char Len
-        char_out_shape = char_out.shape
-        char_out = F.max_pool1d(char_out, kernel_size=char_out_shape[-1]).squeeze(-1) #Shape - N*Max Sen Len, Max Char Len
-        char_out = char_out.view(batch_size, -1, char_out.size(-1)) #Shape - N, Max Sen Len, Max Char Len
+        #char_out = self.char_embed(x_char)
+        #char_out = self.char_embed_drop(char_out) #Shape - N, Max Sen Len, Max Char Len, Embedding dim
+        #char_out = char_out.view(char_out.size(0)*char_out.size(1), char_out.size(2), char_out.size(3)) #Shape - N*Max Sen Len, Max Char Len, Embedding dim
+        #char_out = char_out.permute(0, 2, 1) #Shape - N*Max Sen Len, Embedding dim, Max Char Len
+        #char_out = self.char_cnn(char_out) #Shape - N*Max Sen Len, CNN out dim, Max Char Len
+        #char_out_shape = char_out.shape
+        #char_out = F.max_pool1d(char_out, kernel_size=char_out_shape[-1]).squeeze(-1) #Shape - N*Max Sen Len, Max Char Len
+        #char_out = char_out.view(batch_size, -1, char_out.size(-1)) #Shape - N, Max Sen Len, Max Char Len
 
         # concat = torch.cat((word_out, char_out, tag_out), dim=2)
         concat = torch.cat((word_out, tag_out), dim=2)
         import pdb; pdb.set_trace()
         # NER LSTM
-        ner_lstm_out, _ = self.lstm_ner(concat)
-        ner_lstm_out = self.lstm_ner_drop(ner_lstm_out)
+        ner_lstm_out, (h0, c0) = self.lstm_ner(concat)
+        ner_lstm_out = self.lstm_ner_drop(ner_lstm_out, )
 
         # Linear
         ner_out = self.linear1(ner_lstm_out)

@@ -533,7 +533,7 @@ if __name__ == "__main__":
         X_tags = get_POS_tags(X_text_list)
 
         SENTENCE_LEN_LIST = [len(sentence) for sentence in X_text_list]
-        MAX_SENTENCE_LEN = 1200
+        MAX_SENTENCE_LEN = 800
 
 
         X_text_list = trim_list_of_lists_upto_max_len(X_text_list, MAX_SENTENCE_LEN)
